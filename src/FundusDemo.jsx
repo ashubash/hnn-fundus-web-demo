@@ -146,6 +146,42 @@ const parseNpy = (arrayBuffer) => {
     return new ort.Tensor("float32", data, dims);
 };
 
+// LRU Cache class for ephemeral tensor storage
+class LRUCache {
+    constructor(maxSize = 5) {
+        this.maxSize = maxSize;
+        this.cache = new Map();
+    }
+
+    get(key) {
+        if (this.cache.has(key)) {
+            const entry = this.cache.get(key);
+            this.cache.delete(key);
+            this.cache.set(key, entry);
+            return entry;
+        }
+        return null;
+    }
+
+    set(key, value) {
+        if (this.cache.size >= this.maxSize) {
+            const firstKey = this.cache.keys().next().value;
+            console.log(`[Cache] Evicting oldest: ${firstKey} (size now ${this.maxSize})`);
+            this.cache.delete(firstKey);
+        }
+        this.cache.set(key, { ...value, timestamp: Date.now() });
+    }
+
+    clear() {
+        this.cache.clear();
+        console.log(`[Cache] Cleared all ephemeral data`);
+    }
+
+    size() {
+        return this.cache.size;
+    }
+}
+
 export default function FundusDemo() {
     const { session, loading: modelLoading, error: modelError } = useModelLoader();
     const [showDemo, setShowDemo] = useState(false);
@@ -158,10 +194,19 @@ export default function FundusDemo() {
     const [results, setResults] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [tensorReady, setTensorReady] = useState(false);
-    const [nextReady, setNextReady] = useState(null);
     const [loadError, setLoadError] = useState(null);
+    const [batch, setBatch] = useState([]);  // Current batch of 3 samples
+    const [batchIndex, setBatchIndex] = useState(0);  // Index in current batch
+    const [isWarmed, setIsWarmed] = useState(false);
 
-    const cache = useRef({});
+    const cache = useRef(new LRUCache(5));
+
+    // Clear cache on unmount
+    useEffect(() => {
+        return () => {
+            cache.current.clear();
+        };
+    }, []);
 
     useEffect(() => {
         async function fetchTestSplit() {
@@ -175,7 +220,7 @@ export default function FundusDemo() {
                     console.error(`[TestSplit] Fetch failed:`, err);
                     throw err;
                 }
-                const data = await res.json();
+                const data = await res.json(); // Define data here
                 console.log(`[TestSplit] Loaded ${data.length} samples successfully`);
                 setTestSplit(data);
             } catch (err) {
@@ -183,10 +228,27 @@ export default function FundusDemo() {
                 setTestSplitError(err.message);
             } finally {
                 setTestSplitLoading(false);
+                // Remove the problematic condition here
+                // The preloadNextBatch() will be called from handlePickRandom when needed
             }
         }
         fetchTestSplit();
     }, []);
+
+    const warmStartModel = async (tensor) => {
+        if (isWarmed) return;
+        console.log(`[WarmStart] Running dummy inference on first tensor to warm model`);
+        try {
+            const inputName = session.inputNames[0];
+            const noisyTensor = addNoiseToTensor(tensor);
+            const feeds = { [inputName]: noisyTensor };
+            await session.run(feeds);  // Silent dummy – discards output
+            setIsWarmed(true);
+            console.log(`[WarmStart] Model warmed (one-time done)`);
+        } catch (err) {
+            console.warn(`[WarmStart] Failed on first tensor:`, err);
+        }
+    };
 
     // Load .npy with logs
     const loadTensorFromNpy = async (npyPath) => {
@@ -247,59 +309,122 @@ export default function FundusDemo() {
 
     const handlePickRandom = () => {
         console.log(`[PickRandom] Attempting to pick random sample`);
-        // Return silently if data is still loading or unavailable
         if (testSplitLoading || testSplitError || !testSplit.length) {
             console.warn(`[PickRandom] Skipped: loading=${testSplitLoading}, error=${!!testSplitError}, samples=${testSplit.length}`);
             return;
         }
 
         const oldPath = selectedImage;
-        if (oldPath) {
-            console.log(`[PickRandom] Clearing cache for old path: ${oldPath}`);
-            delete cache.current[oldPath];
-        }
 
-        if (nextReady) {
-            console.log(`[PickRandom] Switching to preloaded next: ${nextReady.original_path}`);
-            setSelectedImage(nextReady.original_path);
-            setSelectedPreprocPath(nextReady.preproc_path);
-            setGtLabel(nextReady.gt);
+        if (batch.length === 0) {
+            // Fallback: pick single if no batch (initial or error)
+            const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
+            console.log(`[PickRandom] Fallback single: ${sample.original_path}, GT: ${CLASSES[sample.class_label_remapped]}`);
+            setSelectedImage(sample.original_path);
+            setSelectedPreprocPath(sample.preproc_path);
+            setGtLabel(sample.class_label_remapped);
             setResults([]);
-            setTensorReady(true);
-            setNextReady(null);
+            const cached = cache.current.get(sample.original_path);
+            setTensorReady(!!cached?.tensor);
             setLoadError(null);
+            // Trigger batch preload
+            preloadNextBatch();
             return;
         }
 
-        const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
-        console.log(`[PickRandom] Selected sample: ${sample.original_path}, GT: ${CLASSES[sample.class_label_remapped]}`);
-        setSelectedImage(sample.original_path);
-        setSelectedPreprocPath(sample.preproc_path);
-        setGtLabel(sample.class_label_remapped);
+        // Cycle through batch instantly
+        const currentSample = batch[batchIndex];
+        console.log(`[PickRandom] Cycling batch ${batchIndex + 1}/3: ${currentSample.original_path}, GT: ${CLASSES[currentSample.gt]}`);
+        setSelectedImage(currentSample.original_path);
+        setSelectedPreprocPath(currentSample.preproc_path);
+        setGtLabel(currentSample.gt);
         setResults([]);
-        setTensorReady(false);
+        const cached = cache.current.get(currentSample.original_path);
+        setTensorReady(!!cached?.tensor);
         setLoadError(null);
+
+        // Advance index; preload next batch if cycling back to 0
+        const nextIndex = (batchIndex + 1) % 3;
+        setBatchIndex(nextIndex);
+        if (nextIndex === 0) {
+            console.log(`[PickRandom] Batch exhausted—preloading next 3`);
+            setBatch([]);  // Clear state
+            
+            // Use a functional state update to ensure we're working with the latest state
+            setTimeout(() => {
+                setBatch(currentBatch => {
+                    // Double-check that the batch is empty before preloading
+                    if (currentBatch.length === 0) {
+                        preloadNextBatch();
+                    }
+                    return currentBatch;
+                });
+            }, 0);
+        }
+    };
+
+    const preloadNextBatch = () => {
+        console.log(`[Preload] Loading next batch of 3 (current: ${selectedImage})`);
+        if (!testSplit.length) {
+            console.log(`[Preload] Skipped: no samples`);
+            return;
+        }
+
+        let attempts = 0;
+        const newSamples = [];
+        while (newSamples.length < 3 && attempts < testSplit.length) {
+            const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
+            if (!newSamples.some(s => s.original_path === sample.original_path) && sample.original_path !== selectedImage) {
+                newSamples.push({
+                    original_path: sample.original_path,
+                    preproc_path: sample.preproc_path,
+                    gt: sample.class_label_remapped
+                });
+            }
+            attempts++;
+        }
+        if (newSamples.length < 3) {
+            console.warn(`[Preload] Only got ${newSamples.length} unique samples after ${attempts} attempts`);
+        }
+
+        console.log(`[Preload] Batch ready: ${newSamples.length} samples`);
+        setBatch(newSamples);
+        setBatchIndex(0);
     };
 
     const handleRunInference = async () => {
         console.log(`[Inference] Starting inference with session: ${!!session}, image: ${selectedImage}, tensorReady: ${tensorReady}`);
-        if (!session || !selectedImage || !tensorReady) {
-            console.warn(`[Inference] Skipped: missing session=${!session}, image=${!selectedImage}, tensor=${!tensorReady}`);
+        if (!session || !selectedImage) {
+            console.warn(`[Inference] Skipped: missing session=${!session}, image=${!selectedImage}`);
             return;
         }
 
         setIsProcessing(true);
-        const tensor = cache.current[selectedImage].tensor;
-        const noisyTensor = addNoiseToTensor(tensor);
-
-        const start = performance.now();
         try {
+            let cached = cache.current.get(selectedImage);
+            let tensor;
+            const isFirstLoad = !cached?.tensor;  // Detect if this is a new tensor load
+            if (isFirstLoad) {
+                tensor = await loadTensorFromNpy(selectedPreprocPath);
+                cache.current.set(selectedImage, { tensor, gt: gtLabel });
+                console.log(`[Inference] Tensor loaded on-demand for ${selectedImage} (first-ever? ${!isWarmed})`);
+                cached = cache.current.get(selectedImage);
+
+                // One-time warm on this first tensor (silent, before real run)
+                await warmStartModel(tensor);
+            } else {
+                tensor = cached.tensor;
+            }
+            setTensorReady(true);
+            
+            const noisyTensor = addNoiseToTensor(tensor);
+            const start = performance.now();
             const inputName = session.inputNames[0];
             console.log(`[Inference] Feeding tensor to input: ${inputName}, shape: [${noisyTensor.dims.join(', ')}]`);
             const feeds = { [inputName]: noisyTensor };
-            const results = await session.run(feeds);
+            const resultsRun = await session.run(feeds);
             const outputName = session.outputNames[0];
-            const output = results[outputName].data;  // logits [4]
+            const output = resultsRun[outputName].data;
             console.log(`[Inference] Raw output from ${outputName}:`, output);
 
             const probs = computeProbs(output);
@@ -318,79 +443,32 @@ export default function FundusDemo() {
                 { label: "Confidence", value: `${(maxProb * 100).toFixed(2)}%` },
                 { label: "Inference Time", value: `${time} ms` }
             ]);
-
-            setTimeout(preloadNext, 0);
         } catch (err) {
             console.error(`[Inference] Error during run:`, err);
-            // Optionally set error state or results with failure
+            setLoadError(`Inference failed: ${err.message}`);
         } finally {
             setIsProcessing(false);
         }
     };
 
     useEffect(() => {
-        if (!selectedPreprocPath || cache.current[selectedImage]?.tensor) {
-            const ready = !!cache.current[selectedImage]?.tensor;
-            console.log(`[TensorEffect] Skipping load: path=${!!selectedPreprocPath}, cached=${ready}`);
-            setTensorReady(ready);
+        if (!selectedPreprocPath) {
+            setTensorReady(false);
             setLoadError(null);
             return;
         }
-
-        console.log(`[TensorEffect] Loading tensor for: ${selectedPreprocPath} (GT: ${CLASSES[gtLabel]})`);
-        const loadCurrentTensor = async () => {
-            try {
-                const tensor = await loadTensorFromNpy(selectedPreprocPath);
-                cache.current[selectedImage] = { tensor, gt: gtLabel };
-                console.log(`[TensorEffect] Tensor loaded and cached for ${selectedImage}`);
-                setTensorReady(true);
-                setLoadError(null);
-            } catch (err) {
-                console.error(`[TensorEffect] Load failed for ${selectedPreprocPath}:`, err);
-                setTensorReady(false);
-                setLoadError(`Tensor failed: ${err.message}`);
-            }
-        };
-        loadCurrentTensor();
+        const cached = cache.current.get(selectedImage);
+        const ready = !!cached?.tensor;
+        console.log(`[TensorEffect] Skipping load: path=${!!selectedPreprocPath}, cached=${ready}`);
+        setTensorReady(ready);
+        setLoadError(null);
     }, [selectedPreprocPath, gtLabel]);
-
-    const preloadNext = async () => {
-        console.log(`[Preload] Starting preload next (current: ${selectedImage})`);
-        if (!session || !testSplit.length || !selectedImage || nextReady) {
-            console.log(`[Preload] Skipped: session=${!!session}, samples=${testSplit.length}, current=${!!selectedImage}, alreadyReady=${!!nextReady}`);
-            return;
-        }
-
-        let attempts = 0;
-        let newSample;
-        while (attempts < testSplit.length && (!newSample || newSample.original_path === selectedImage)) {
-            newSample = testSplit[Math.floor(Math.random() * testSplit.length)];
-            attempts++;
-        }
-        if (!newSample) {
-            console.warn(`[Preload] No new sample after ${attempts} attempts`);
-            return;
-        }
-
-        const newOriginalPath = newSample.original_path;
-        const newPreprocPath = newSample.preproc_path;
-        const newGt = newSample.class_label_remapped;
-
-        console.log(`[Preload] Preloading: ${newOriginalPath} (GT: ${CLASSES[newGt]})`);
-        try {
-            const tensor = await loadTensorFromNpy(newPreprocPath);
-            cache.current[newOriginalPath] = { tensor, gt: newGt };
-            console.log(`[Preload] Preload successful for ${newOriginalPath}`);
-            setNextReady({ original_path: newOriginalPath, preproc_path: newPreprocPath, gt: newGt });
-        } catch (err) {
-            console.error(`[Preload] Preload failed for ${newPreprocPath}:`, err);
-        }
-    };
 
     if (!showDemo) {
         return (
             <div className="fundus-demo">
-                <h1>Transformer on Latents Fundus Classification Web Demo</h1>
+                <h1 style={{ marginBottom: '0.5rem' }}>MLP on HNN Embeddings</h1>
+                <h2 style={{ marginTop: '0', marginBottom: '2rem' }}>Fundus Classification Web Demo</h2>
                 <button onClick={handleTryDemo}>
                     Try Demo
                 </button>
@@ -400,8 +478,8 @@ export default function FundusDemo() {
 
     return (
         <div className="fundus-demo">
-            <h1>Transformer on Latents Fundus Classification Web Demo</h1>
-
+            <h1 style={{ marginBottom: '0.5rem' }}>MLP on HNN Embeddings</h1>
+            <h2 style={{ marginTop: '0', marginBottom: '2rem' }}>Fundus Classification Web Demo</h2>
             <button onClick={handlePickRandom}>
                 Pick Random Image
             </button>
@@ -430,7 +508,7 @@ export default function FundusDemo() {
                 </div>
             )}
 
-            <button onClick={handleRunInference} disabled={!selectedImage || !tensorReady || isProcessing}>
+            <button onClick={handleRunInference} disabled={!selectedImage || isProcessing}>
                 {isProcessing ? "Processing..." : "Run Inference"}
             </button>
 
