@@ -195,8 +195,6 @@ export default function FundusDemo() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [tensorReady, setTensorReady] = useState(false);
     const [loadError, setLoadError] = useState(null);
-    const [batch, setBatch] = useState([]);  // Current batch of 3 samples
-    const [batchIndex, setBatchIndex] = useState(0);  // Index in current batch
     const [isWarmed, setIsWarmed] = useState(false);
 
     const cache = useRef(new LRUCache(5));
@@ -314,82 +312,15 @@ export default function FundusDemo() {
             return;
         }
 
-        const oldPath = selectedImage;
-
-        if (batch.length === 0) {
-            // Fallback: pick single if no batch (initial or error)
-            const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
-            console.log(`[PickRandom] Fallback single: ${sample.original_path}, GT: ${CLASSES[sample.class_label_remapped]}`);
-            setSelectedImage(sample.original_path);
-            setSelectedPreprocPath(sample.preproc_path);
-            setGtLabel(sample.class_label_remapped);
-            setResults([]);
-            const cached = cache.current.get(sample.original_path);
-            setTensorReady(!!cached?.tensor);
-            setLoadError(null);
-            // Trigger batch preload
-            preloadNextBatch();
-            return;
-        }
-
-        // Cycle through batch instantly
-        const currentSample = batch[batchIndex];
-        console.log(`[PickRandom] Cycling batch ${batchIndex + 1}/3: ${currentSample.original_path}, GT: ${CLASSES[currentSample.gt]}`);
-        setSelectedImage(currentSample.original_path);
-        setSelectedPreprocPath(currentSample.preproc_path);
-        setGtLabel(currentSample.gt);
+        const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
+        console.log(`[PickRandom] Selected: ${sample.original_path}, GT: ${CLASSES[sample.class_label_remapped]}`);
+        setSelectedImage(sample.original_path);
+        setSelectedPreprocPath(sample.preproc_path);
+        setGtLabel(sample.class_label_remapped);
         setResults([]);
-        const cached = cache.current.get(currentSample.original_path);
+        const cached = cache.current.get(sample.original_path);
         setTensorReady(!!cached?.tensor);
         setLoadError(null);
-
-        // Advance index; preload next batch if cycling back to 0
-        const nextIndex = (batchIndex + 1) % 3;
-        setBatchIndex(nextIndex);
-        if (nextIndex === 0) {
-            console.log(`[PickRandom] Batch exhausted—preloading next 3`);
-            setBatch([]);  // Clear state
-            
-            // Use a functional state update to ensure we're working with the latest state
-            setTimeout(() => {
-                setBatch(currentBatch => {
-                    // Double-check that the batch is empty before preloading
-                    if (currentBatch.length === 0) {
-                        preloadNextBatch();
-                    }
-                    return currentBatch;
-                });
-            }, 0);
-        }
-    };
-
-    const preloadNextBatch = () => {
-        console.log(`[Preload] Loading next batch of 3 (current: ${selectedImage})`);
-        if (!testSplit.length) {
-            console.log(`[Preload] Skipped: no samples`);
-            return;
-        }
-
-        let attempts = 0;
-        const newSamples = [];
-        while (newSamples.length < 3 && attempts < testSplit.length) {
-            const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
-            if (!newSamples.some(s => s.original_path === sample.original_path) && sample.original_path !== selectedImage) {
-                newSamples.push({
-                    original_path: sample.original_path,
-                    preproc_path: sample.preproc_path,
-                    gt: sample.class_label_remapped
-                });
-            }
-            attempts++;
-        }
-        if (newSamples.length < 3) {
-            console.warn(`[Preload] Only got ${newSamples.length} unique samples after ${attempts} attempts`);
-        }
-
-        console.log(`[Preload] Batch ready: ${newSamples.length} samples`);
-        setBatch(newSamples);
-        setBatchIndex(0);
     };
 
     const handleRunInference = async () => {
