@@ -77,11 +77,18 @@ const parseNpy = (arrayBuffer) => {
     }
     console.log(`[NPY Parser] NumPy 1.0 version confirmed`);
 
-    // Header length (little-endian uint32)
-    const headerLen = u8[8] | (u8[9] << 8) | (u8[10] << 16) | (u8[11] << 24);
+    // Header length (little-endian uint16 for v1.0)
+    const headerLen = u8[8] | (u8[9] << 8);
     console.log(`[NPY Parser] Header length: ${headerLen}`);
 
-    const headerBytes = u8.subarray(12, 12 + headerLen);
+    const headerStart = 10;
+    if (headerLen > arrayBuffer.byteLength - headerStart) {
+        const err = new Error('Invalid .npy: Header too large');
+        console.error(`[NPY Parser] Header length ${headerLen} exceeds buffer`);
+        throw err;
+    }
+
+    const headerBytes = u8.subarray(headerStart, headerStart + headerLen);
     const headerStr = new TextDecoder('ascii').decode(headerBytes);
     console.log(`[NPY Parser] Header preview: ${headerStr.substring(0, 100)}...`);
 
@@ -106,9 +113,9 @@ const parseNpy = (arrayBuffer) => {
     console.log(`[NPY Parser] Float32 dtype confirmed`);
 
     // Compute padding to align to 64 bytes
-    const totalHeaderStart = 12;
-    const pad = (64 - ((totalHeaderStart + headerLen) % 64)) % 64;
-    const dataOffset = totalHeaderStart + headerLen + pad;
+    const headerEnd = headerStart + headerLen;
+    const pad = (64 - (headerEnd % 64)) % 64;
+    const dataOffset = headerEnd + pad;
     console.log(`[NPY Parser] Data offset calculated: ${dataOffset} (padding: ${pad})`);
 
     const length = arrayBuffer.byteLength;
@@ -119,12 +126,13 @@ const parseNpy = (arrayBuffer) => {
     }
 
     const numElements = shape.reduce((a, b) => a * b, 1);
-    if (numElements !== 256 || shape.length !== 1) {
-        const err = new Error(`Expected shape (256,), got ${shape}`);
-        console.error(`[NPY Parser] Shape mismatch: expected [256], got [${shape.join(', ')}] (elements: ${numElements})`);
+    const expectedElements = 256;
+    if (numElements !== expectedElements) {
+        const err = new Error(`Expected ${expectedElements} elements, got ${numElements}`);
+        console.error(`[NPY Parser] Elements mismatch: expected ${expectedElements}, got ${numElements} (shape: [${shape.join(', ')}])`);
         throw err;
     }
-    console.log(`[NPY Parser] Shape validation passed: 256 elements`);
+    console.log(`[NPY Parser] Elements validation passed: ${numElements} elements`);
 
     if (dataOffset + numElements * 4 > length) {
         const err = new Error('Invalid .npy: Data exceeds file size');
@@ -133,8 +141,8 @@ const parseNpy = (arrayBuffer) => {
     }
 
     const data = new Float32Array(arrayBuffer, dataOffset, numElements);
-    const dims = [1, 256];
-    console.log(`[NPY Parser] Tensor created: dims [1, 256], data range [${data[0].toFixed(4)}, ${data[data.length-1].toFixed(4)}]`);
+    const dims = shape.length === 1 ? [1, shape[0]] : shape;
+    console.log(`[NPY Parser] Tensor created: dims [${dims.join(', ')}], data range [${data[0].toFixed(4)}, ${data[data.length-1].toFixed(4)}]`);
     return new ort.Tensor("float32", data, dims);
 };
 
