@@ -1,0 +1,132 @@
+/* src/style.css */
+
+/* Reset and base styles */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+  background-color: #f5f5f5;
+}
+
+/* Root container for React app */
+#root {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+/* Headings */
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* Main demo container */
+.fundus-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+}
+
+/* Image container - ensures consistent size and position, blends with background */
+.image-container {
+  width: 224px;
+  height: 224px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f5f5f5; /* Same as page background for seamless blend */
+  overflow: hidden;
+}
+
+/* Images */
+.fundus-demo img {
+  width: 224px;
+  height: 224px;
+  object-fit: cover;
+}
+
+/* Image placeholder */
+.image-placeholder {
+  color: #666;
+  font-size: 14px;
+  text-align: center;
+  padding: 10px;
+}
+
+/* Buttons */
+.fundus-demo button {
+  padding: 8px 16px;
+  font-size: 14px;
+  border: none;
+  border-radius: 5px;
+  background-color: #1976d2;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.fundus-demo button:hover {
+  background-color: #1565c0;
+}
+
+.fundus-demo button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Results container */
+.results-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* Result item */
+.result-item {
+  text-align: center;
+  margin: 5px 0;
+}
+
+/* Result label - bold */
+.result-label {
+  font-weight: bold;
+  color: #333;
+}
+
+/* Output text */
+.fundus-demo .output {
+  margin-top: 10px;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* Spinner for lazy loading */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-top-color: #3498db;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
