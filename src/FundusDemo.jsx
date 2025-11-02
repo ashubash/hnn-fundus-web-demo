@@ -1,7 +1,7 @@
 // src/FundusDemo.jsx
 import React, { useEffect, useState, useRef } from "react";
 import * as ort from "onnxruntime-web";
-const modelUrl = `${import.meta.env.BASE_URL}student_classifier.onnx`;
+const modelUrl = `${import.meta.env.BASE_URL}mlp_student.onnx`;
 // Pin to version 1.20.0 to avoid SessionOptions constructor issue
 ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/";
 // Disable JSEP and threads for compatibility
@@ -9,203 +9,189 @@ ort.env.wasm.numThreads = 1;
 ort.env.allowJSEPSupport = false;
 
 const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
+const NORMALIZE_MEAN = [0.485, 0.456, 0.406];
+const NORMALIZE_STD = [0.229, 0.224, 0.225];
+const IMG_SIZE = 224;
 
-// Enhanced model loader with asset imports
+// Enhanced model loader with progress tracking
 function useModelLoader() {
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [progress, setProgress] = useState(0);
     const [error, setError] = useState(null);
 
     useEffect(() => {
         async function loadModel() {
             console.log(`[ModelLoader] Starting model load from: ${modelUrl}`);
             setLoading(true);
+            setProgress(0);
             setError(null);
             try {
-                const modelRes = await fetch(modelUrl);
-                if (!modelRes.ok) {
-                    const err = new Error(`Model fetch failed: ${modelRes.status} ${modelRes.statusText}`);
-                    console.error(`[ModelLoader] Fetch error:`, err);
-                    throw err;
-                }
-                console.log(`[ModelLoader] Model fetched successfully, size: ${modelRes.headers.get('content-length')} bytes`);
-                const modelBuffer = await modelRes.arrayBuffer();
-                console.log(`[ModelLoader] Model buffer ready, length: ${modelBuffer.byteLength} bytes`);
+                // Use XMLHttpRequest for progress tracking
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', modelUrl, true);
+                xhr.responseType = 'arraybuffer';
 
-                // Create session without SessionOptions constructor
-                const sessionOptions = {
-                    executionProviders: ['wasm']
-                };
+                xhr.addEventListener('progress', (event) => {
+                    if (event.lengthComputable) {
+                        const percentComplete = (event.loaded / event.total) * 100;
+                        setProgress(Math.round(percentComplete));
+                        console.log(`[ModelLoader] Download progress: ${percentComplete.toFixed(1)}% (${event.loaded}/${event.total} bytes)`);
+                    }
+                });
 
-                console.log(`[ModelLoader] Creating ONNX session with WASM provider...`);
-                const sess = await ort.InferenceSession.create(modelBuffer, sessionOptions);
-                console.log(`[ModelLoader] ONNX session created successfully. Input names:`, sess.inputNames);
-                console.log(`[ModelLoader] Output names:`, sess.outputNames);
-                setSession(sess);
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        console.log(`[ModelLoader] Model fetched successfully, size: ${xhr.response.byteLength} bytes`);
+                        const modelBuffer = xhr.response;
+                        
+                        // Create session without SessionOptions constructor
+                        const sessionOptions = {
+                            executionProviders: ['wasm']
+                        };
+
+                        console.log(`[ModelLoader] Creating ONNX session with WASM provider...`);
+                        ort.InferenceSession.create(modelBuffer, sessionOptions).then((sess) => {
+                            console.log(`[ModelLoader] ONNX session created successfully. Input names:`, sess.inputNames);
+                            console.log(`[ModelLoader] Output names:`, sess.outputNames);
+                            setSession(sess);
+                            setProgress(100); // Complete
+                            setLoading(false);
+                        }).catch((err) => {
+                            console.error(`[ModelLoader] Session creation failed:`, err);
+                            setError(err);
+                            setLoading(false);
+                        });
+                    } else {
+                        const err = new Error(`HTTP ${xhr.status} ${xhr.statusText}`);
+                        console.error(`[ModelLoader] Fetch error:`, err);
+                        setError(err);
+                        setLoading(false);
+                    }
+                });
+
+                xhr.addEventListener('error', (err) => {
+                    console.error(`[ModelLoader] Network error:`, err);
+                    setError(err);
+                    setLoading(false);
+                });
+
+                xhr.send();
             } catch (err) {
-                console.error(`[ModelLoader] Full error during load:`, err);
+                console.error(`[ModelLoader] Unexpected error:`, err);
                 setError(err);
-            } finally {
-                console.log(`[ModelLoader] Load process complete (session: ${!!session})`);
                 setLoading(false);
             }
         }
         loadModel();
     }, []);
 
-    return { session, loading, error };
+    return { session, loading, progress, error };
 }
 
-// Parse .npy file (NumPy binary format, assuming version 1.0, float32, shape (256,))
-const parseNpy = (arrayBuffer) => {
-    console.log(`[NPY Parser] Starting parse, buffer length: ${arrayBuffer.byteLength}`);
-    const u8 = new Uint8Array(arrayBuffer);
+const preprocessImage = (imageSrc) => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = IMG_SIZE;
+                canvas.height = IMG_SIZE;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
 
-    // Magic bytes: \x93NUMPY
-    if (u8[0] !== 0x93 || u8[1] !== 78 || u8[2] !== 85 || u8[3] !== 77 || u8[4] !== 80 || u8[5] !== 89) {
-        const err = new Error('Invalid .npy: Wrong magic bytes');
-        console.error(`[NPY Parser] Magic bytes mismatch:`, u8.subarray(0, 6));
-        throw err;
-    }
-    console.log(`[NPY Parser] Valid magic bytes confirmed`);
+                const imageData = ctx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+                const data = imageData.data;
 
-    const major = u8[6], minor = u8[7];
-    if (major !== 1 || minor !== 0) {
-        const err = new Error('Only NumPy 1.0 format supported');
-        console.error(`[NPY Parser] Version mismatch: major=${major}, minor=${minor}`);
-        throw err;
-    }
-    console.log(`[NPY Parser] NumPy 1.0 version confirmed`);
+                const tensorData = new Float32Array(3 * IMG_SIZE * IMG_SIZE);
+                let currentRow = 0;
+                const chunkSize = 32; // You can try 16 if 32 is still too much
 
-    // Header length (little-endian uint16 for v1.0)
-    const headerLen = u8[8] | (u8[9] << 8);
-    console.log(`[NPY Parser] Header length: ${headerLen}`);
+                // Define the processing function that will be called recursively via rAF
+                const processChunk = () => {
+                    const endRow = Math.min(currentRow + chunkSize, IMG_SIZE);
+                    
+                    // The synchronous processing for this chunk
+                    for (let row = currentRow; row < endRow; row++) {
+                        for (let x = 0; x < IMG_SIZE; x++) {
+                            const idx = (row * IMG_SIZE + x) * 4;
+                            const r = data[idx] / 255.0;
+                            const g = data[idx + 1] / 255.0;
+                            const b = data[idx + 2] / 255.0;
 
-    const headerStart = 10;
-    if (headerLen > arrayBuffer.byteLength - headerStart) {
-        const err = new Error('Invalid .npy: Header too large');
-        console.error(`[NPY Parser] Header length ${headerLen} exceeds buffer`);
-        throw err;
-    }
+                            const normR = (r - NORMALIZE_MEAN[0]) / NORMALIZE_STD[0];
+                            const normG = (g - NORMALIZE_MEAN[1]) / NORMALIZE_STD[1];
+                            const normB = (b - NORMALIZE_MEAN[2]) / NORMALIZE_STD[2];
 
-    const headerBytes = u8.subarray(headerStart, headerStart + headerLen);
-    const headerStr = new TextDecoder('ascii').decode(headerBytes);
-    console.log(`[NPY Parser] Header preview: ${headerStr.substring(0, 100)}...`);
+                            const outIdxR = row * IMG_SIZE + x;
+                            const outIdxG = IMG_SIZE * IMG_SIZE + row * IMG_SIZE + x;
+                            const outIdxB = 2 * IMG_SIZE * IMG_SIZE + row * IMG_SIZE + x;
 
-    // Extract shape: e.g., 'shape': (256,)
-    const shapeMatch = headerStr.match(/'shape':\s*\((\d+(,\s*)?)+?\)/);
-    if (!shapeMatch) {
-        const err = new Error('No shape found in .npy header');
-        console.error(`[NPY Parser] No shape match in header`);
-        throw err;
-    }
-    const shapeStr = shapeMatch[0].replace(/'shape':\s*\(|\)/g, '').replace(/\s/g, '');
-    const shape = shapeStr.split(',').map(Number).filter(x => x > 0);
-    console.log(`[NPY Parser] Parsed shape: [${shape.join(', ')}]`);
+                            tensorData[outIdxR] = normR;
+                            tensorData[outIdxG] = normG;
+                            tensorData[outIdxB] = normB;
+                        }
+                    }
 
-    // Extract dtype: assume '<f4' for float32
-    const dtypeMatch = headerStr.match(/'descr':\s*'(<f4|float32)'/);
-    if (!dtypeMatch || (dtypeMatch[1] !== '<f4' && dtypeMatch[1] !== 'float32')) {
-        const err = new Error('Only float32 dtype supported');
-        console.error(`[NPY Parser] Dtype mismatch: found '${dtypeMatch ? dtypeMatch[1] : 'none'}'`);
-        throw err;
-    }
-    console.log(`[NPY Parser] Float32 dtype confirmed`);
+                    const processedPct = ((endRow / IMG_SIZE) * 100).toFixed(0);
+                    console.log(`[Preprocess] Rows ${currentRow}-${endRow} done (${processedPct}% of rows)`);
 
-    // Compute padding to align to 64 bytes
-    const headerEnd = headerStart + headerLen;
-    const pad = (64 - (headerEnd % 64)) % 64;
-    const dataOffset = headerEnd + pad;
-    console.log(`[NPY Parser] Data offset calculated: ${dataOffset} (padding: ${pad})`);
+                    currentRow = endRow;
+                    
+                    if (currentRow < IMG_SIZE) {
+                        // Schedule the next chunk. This clears the call stack.
+                        requestAnimationFrame(processChunk);
+                    } else {
+                        // All chunks are processed, create the tensor and resolve
+                        const tensor = new ort.Tensor('float32', tensorData, [1, 3, IMG_SIZE, IMG_SIZE]);
+                        console.log(`[Preprocess] Tensor ready: shape [1,3,${IMG_SIZE},${IMG_SIZE}]`);
+                        resolve(tensor);
+                    }
+                };
 
-    const length = arrayBuffer.byteLength;
-    if (dataOffset >= length) {
-        const err = new Error('Invalid .npy: Data offset exceeds file size');
-        console.error(`[NPY Parser] Offset ${dataOffset} >= length ${length}`);
-        throw err;
-    }
+                // Start the processing
+                requestAnimationFrame(processChunk);
 
-    const numElements = shape.reduce((a, b) => a * b, 1);
-    const expectedElements = 256;
-    if (numElements !== expectedElements) {
-        const err = new Error(`Expected ${expectedElements} elements, got ${numElements}`);
-        console.error(`[NPY Parser] Elements mismatch: expected ${expectedElements}, got ${numElements} (shape: [${shape.join(', ')}])`);
-        throw err;
-    }
-    console.log(`[NPY Parser] Elements validation passed: ${numElements} elements`);
-
-    if (dataOffset + numElements * 4 > length) {
-        const err = new Error('Invalid .npy: Data exceeds file size');
-        console.error(`[NPY Parser] Data end ${dataOffset + numElements * 4} > length ${length}`);
-        throw err;
-    }
-
-    const data = new Float32Array(arrayBuffer, dataOffset, numElements);
-    const dims = shape.length === 1 ? [1, shape[0]] : shape;
-    console.log(`[NPY Parser] Tensor created: dims [${dims.join(', ')}], data range [${data[0].toFixed(4)}, ${data[data.length-1].toFixed(4)}]`);
-    return new ort.Tensor("float32", data, dims);
+            } catch (err) {
+                console.error(`[Preprocess] Error processing image:`, err);
+                reject(err);
+            }
+        };
+        img.onerror = (err) => {
+            console.error(`[Preprocess] Image load failed:`, err);
+            reject(new Error(`Failed to load ${imageSrc}`));
+        };
+        img.src = imageSrc;
+    });
 };
 
-// LRU Cache class for ephemeral tensor storage
-class LRUCache {
-    constructor(maxSize = 5) {
-        this.maxSize = maxSize;
-        this.cache = new Map();
-    }
-
-    get(key) {
-        if (this.cache.has(key)) {
-            const entry = this.cache.get(key);
-            this.cache.delete(key);
-            this.cache.set(key, entry);
-            return entry;
-        }
-        return null;
-    }
-
-    set(key, value) {
-        if (this.cache.size >= this.maxSize) {
-            const firstKey = this.cache.keys().next().value;
-            console.log(`[Cache] Evicting oldest: ${firstKey} (size now ${this.maxSize})`);
-            this.cache.delete(firstKey);
-        }
-        this.cache.set(key, { ...value, timestamp: Date.now() });
-    }
-
-    clear() {
-        this.cache.clear();
-        console.log(`[Cache] Cleared all ephemeral data`);
-    }
-
-    size() {
-        return this.cache.size;
-    }
-}
+// Compute softmax
+const computeProbs = (logits) => {
+    const output = Array.from(logits);
+    console.log(`[Probs] Computing softmax from logits:`, output);
+    const probs = new Float32Array(output.length);
+    let maxLogit = -Infinity;
+    for (let i = 0; i < output.length; i++) maxLogit = Math.max(maxLogit, output[i]);
+    let sumExp = 0;
+    for (let i = 0; i < output.length; i++) sumExp += Math.exp(output[i] - maxLogit);
+    for (let i = 0; i < output.length; i++) probs[i] = Math.exp(output[i] - maxLogit) / sumExp;
+    console.log(`[Probs] Softmax output:`, Array.from(probs));
+    return Array.from(probs);
+};
 
 export default function FundusDemo() {
-    const { session, loading: modelLoading, error: modelError } = useModelLoader();
+    const { session, loading: modelLoading, progress, error: modelError } = useModelLoader();
     const [showDemo, setShowDemo] = useState(false);
     const [testSplit, setTestSplit] = useState([]);
     const [testSplitLoading, setTestSplitLoading] = useState(true);
     const [testSplitError, setTestSplitError] = useState(null);
     const [selectedImage, setSelectedImage] = useState(null);
-    const [selectedPreprocPath, setSelectedPreprocPath] = useState(null);
     const [gtLabel, setGtLabel] = useState(null);
     const [results, setResults] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [tensorReady, setTensorReady] = useState(false);
-    const [loadError, setLoadError] = useState(null);
-    const [isWarmed, setIsWarmed] = useState(false);
 
-    const cache = useRef(new LRUCache(5));
-
-    // Clear cache on unmount
-    useEffect(() => {
-        return () => {
-            cache.current.clear();
-        };
-    }, []);
-
+    // Fetch test split data (only original_path and class_label_remapped)
     useEffect(() => {
         async function fetchTestSplit() {
             console.log(`[TestSplit] Fetching test_split_preproc.json...`);
@@ -218,87 +204,23 @@ export default function FundusDemo() {
                     console.error(`[TestSplit] Fetch failed:`, err);
                     throw err;
                 }
-                const data = await res.json(); // Define data here
-                console.log(`[TestSplit] Loaded ${data.length} samples successfully`);
-                setTestSplit(data);
+                const data = await res.json();
+                // Filter to only needed fields
+                const filteredData = data.map(({ original_path, class_label_remapped }) => ({
+                    original_path,
+                    class_label_remapped
+                }));
+                console.log(`[TestSplit] Loaded ${filteredData.length} samples successfully`);
+                setTestSplit(filteredData);
             } catch (err) {
                 console.error(`[TestSplit] Full error:`, err);
                 setTestSplitError(err.message);
             } finally {
                 setTestSplitLoading(false);
-                // Remove the problematic condition here
-                // The preloadNextBatch() will be called from handlePickRandom when needed
             }
         }
         fetchTestSplit();
     }, []);
-
-    const warmStartModel = async (tensor) => {
-        if (isWarmed) return;
-        console.log(`[WarmStart] Running dummy inference on first tensor to warm model`);
-        try {
-            const inputName = session.inputNames[0];
-            const noisyTensor = addNoiseToTensor(tensor);
-            const feeds = { [inputName]: noisyTensor };
-            await session.run(feeds);  // Silent dummy – discards output
-            setIsWarmed(true);
-            console.log(`[WarmStart] Model warmed (one-time done)`);
-        } catch (err) {
-            console.warn(`[WarmStart] Failed on first tensor:`, err);
-        }
-    };
-
-    // Load .npy with logs
-    const loadTensorFromNpy = async (npyPath) => {
-        console.log(`[TensorLoader] Loading NPY from: ${npyPath}`);
-        try {
-            const response = await fetch(npyPath);
-            if (!response.ok) {
-                const err = new Error(`HTTP ${response.status} ${response.statusText}`);
-                console.error(`[TensorLoader] Fetch failed for ${npyPath}:`, err);
-                throw err;
-            }
-            console.log(`[TensorLoader] Fetched NPY, size: ${response.headers.get('content-length')} bytes`);
-            const arrayBuffer = await response.arrayBuffer();
-            if (arrayBuffer.byteLength < 1000) {
-                const text = new TextDecoder().decode(arrayBuffer);
-                const err = new Error(`Non-binary response: ${text.substring(0, 100)}`);
-                console.error(`[TensorLoader] Invalid response content:`, err);
-                throw err;
-            }
-            const tensor = parseNpy(arrayBuffer);
-            console.log(`[TensorLoader] Tensor parsed and ready for ${npyPath}`);
-            return tensor;
-        } catch (err) {
-            console.error(`[TensorLoader] Full error for ${npyPath}:`, err);
-            throw err;
-        }
-    };
-
-    // Add noise to tensor
-    const addNoiseToTensor = (tensor, noiseStd = 0.001) => {
-        console.log(`[NoiseAdder] Adding noise (std=${noiseStd}) to tensor`);
-        const noisyData = new Float32Array(tensor.data);
-        for (let i = 0; i < noisyData.length; i++) {
-            noisyData[i] += (Math.random() - 0.5) * 2 * noiseStd;
-        }
-        const noisyTensor = new ort.Tensor("float32", noisyData, tensor.dims);
-        console.log(`[NoiseAdder] Noise added, new range [${noisyData[0].toFixed(4)}, ${noisyData[noisyData.length-1].toFixed(4)}]`);
-        return noisyTensor;
-    };
-
-    // Compute probabilities from logits
-    const computeProbs = (output) => {
-        console.log(`[Probs] Computing softmax from logits:`, output);
-        const probs = new Float32Array(output.length);
-        let maxLogit = -Infinity;
-        for (let i = 0; i < output.length; i++) maxLogit = Math.max(maxLogit, output[i]);
-        let sumExp = 0;
-        for (let i = 0; i < output.length; i++) sumExp += Math.exp(output[i] - maxLogit);
-        for (let i = 0; i < output.length; i++) probs[i] = Math.exp(output[i] - maxLogit) / sumExp;
-        console.log(`[Probs] Softmax output:`, Array.from(probs));
-        return probs;
-    };
 
     const handleTryDemo = () => {
         console.log(`[Demo] User clicked Try Demo`);
@@ -315,16 +237,12 @@ export default function FundusDemo() {
         const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
         console.log(`[PickRandom] Selected: ${sample.original_path}, GT: ${CLASSES[sample.class_label_remapped]}`);
         setSelectedImage(sample.original_path);
-        setSelectedPreprocPath(sample.preproc_path);
         setGtLabel(sample.class_label_remapped);
         setResults([]);
-        const cached = cache.current.get(sample.original_path);
-        setTensorReady(!!cached?.tensor);
-        setLoadError(null);
     };
 
     const handleRunInference = async () => {
-        console.log(`[Inference] Starting inference with session: ${!!session}, image: ${selectedImage}, tensorReady: ${tensorReady}`);
+        console.log(`[Inference] Starting inference with session: ${!!session}, image: ${selectedImage}`);
         if (!session || !selectedImage) {
             console.warn(`[Inference] Skipped: missing session=${!session}, image=${!selectedImage}`);
             return;
@@ -332,27 +250,13 @@ export default function FundusDemo() {
 
         setIsProcessing(true);
         try {
-            let cached = cache.current.get(selectedImage);
-            let tensor;
-            const isFirstLoad = !cached?.tensor;  // Detect if this is a new tensor load
-            if (isFirstLoad) {
-                tensor = await loadTensorFromNpy(selectedPreprocPath);
-                cache.current.set(selectedImage, { tensor, gt: gtLabel });
-                console.log(`[Inference] Tensor loaded on-demand for ${selectedImage} (first-ever? ${!isWarmed})`);
-                cached = cache.current.get(selectedImage);
-
-                // One-time warm on this first tensor (silent, before real run)
-                await warmStartModel(tensor);
-            } else {
-                tensor = cached.tensor;
-            }
-            setTensorReady(true);
+            // Preprocess image to tensor
+            const tensor = await preprocessImage(selectedImage);
             
-            const noisyTensor = addNoiseToTensor(tensor);
             const start = performance.now();
             const inputName = session.inputNames[0];
-            console.log(`[Inference] Feeding tensor to input: ${inputName}, shape: [${noisyTensor.dims.join(', ')}]`);
-            const feeds = { [inputName]: noisyTensor };
+            console.log(`[Inference] Feeding tensor to input: ${inputName}, shape: [${tensor.dims.join(', ')}]`);
+            const feeds = { [inputName]: tensor };
             const resultsRun = await session.run(feeds);
             const outputName = session.outputNames[0];
             const output = resultsRun[outputName].data;
@@ -376,82 +280,105 @@ export default function FundusDemo() {
             ]);
         } catch (err) {
             console.error(`[Inference] Error during run:`, err);
-            setLoadError(`Inference failed: ${err.message}`);
+            setResults([{ label: "Error", value: `Inference failed: ${err.message}` }]);
         } finally {
             setIsProcessing(false);
         }
     };
 
-    useEffect(() => {
-        if (!selectedPreprocPath) {
-            setTensorReady(false);
-            setLoadError(null);
-            return;
-        }
-        const cached = cache.current.get(selectedImage);
-        const ready = !!cached?.tensor;
-        console.log(`[TensorEffect] Skipping load: path=${!!selectedPreprocPath}, cached=${ready}`);
-        setTensorReady(ready);
-        setLoadError(null);
-    }, [selectedPreprocPath, gtLabel]);
-
     if (!showDemo) {
         return (
-            <div className="fundus-demo">
-                <h1 style={{ marginBottom: '0.5rem' }}>MLP on HNN Embeddings</h1>
-                <h2 style={{ marginTop: '0', marginBottom: '2rem' }}>Fundus Classification Web Demo</h2>
-                <button onClick={handleTryDemo}>
+            <>
+                <div className="title-container">
+                    <h1>HNN to MLP Distillation</h1>
+                    <h2>Fundus Classification Web Demo</h2>
+                </div>
+                <button className="try-demo-button" onClick={handleTryDemo}>
                     Try Demo
                 </button>
-            </div>
+            </>
         );
     }
 
     return (
-        <div className="fundus-demo">
-            <h1 style={{ marginBottom: '0.5rem' }}>MLP on HNN Embeddings</h1>
-            <h2 style={{ marginTop: '0', marginBottom: '2rem' }}>Fundus Classification Web Demo</h2>
-            <button onClick={handlePickRandom}>
-                Pick Random Image
-            </button>
-
-            <div className="image-container">
-                {selectedImage ? (
-                    <img
-                        src={selectedImage}
-                        alt="Fundus"
-                        onError={(e) => {
-                            console.error(`[Image] Load failed for: ${selectedImage}`);
-                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjI0IiBoZWlnaHQ9IjIyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4=';
-                        }}
-                    />
-                ) : (
-                    <div className="image-placeholder">
-                        Click "Pick Random Image" to start
+        <>
+            <div className="title-container">
+                <h1>HNN to MLP Distillation</h1>
+                <h2>Fundus Classification Web Demo</h2>
+            </div>
+            
+            <div className="fundus-demo">
+                {/* Model Loading Progress */}
+                {modelLoading && (
+                    <div className="loading-container">
+                        <h3>Downloading Model ({progress}%)</h3>
+                        <div className="progress-bar">
+                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                        </div>
                     </div>
                 )}
-            </div>
 
-            {/* Ground Truth appears right after image is selected */}
-            {gtLabel !== null && (
-                <div className="result-item">
-                    <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
-                </div>
-            )}
+                {modelError && (
+                    <div className="error">
+                        <h3>Model Load Error</h3>
+                        <p>{modelError.message}</p>
+                    </div>
+                )}
 
-            <button onClick={handleRunInference} disabled={!selectedImage || isProcessing}>
-                {isProcessing ? "Processing..." : "Run Inference"}
-            </button>
+                {testSplitLoading && <p>Loading test split...</p>}
+                {testSplitError && (
+                    <div className="error">
+                        <h3>Test Split Error</h3>
+                        <p>{testSplitError}</p>
+                    </div>
+                )}
 
-            {results.length > 0 && (
-                <div className="results-container">
-                    {results.map((result, index) => (
-                        <div key={index} className="result-item">
-                            <span className="result-label">{result.label}:</span> {result.value}
+                {!modelLoading && !modelError && (
+                    <>
+                        <button onClick={handlePickRandom} disabled={testSplitLoading || !!testSplitError || !testSplit.length}>
+                            Pick Random Image
+                        </button>
+
+                        <div className="image-container">
+                            {selectedImage ? (
+                                <img
+                                    src={selectedImage}
+                                    alt="Fundus"
+                                    onError={(e) => {
+                                        console.error(`[Image] Load failed for: ${selectedImage}`);
+                                        e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjI0IiBoZWlnaHQ9IjIyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4=';
+                                    }}
+                                />
+                            ) : (
+                                <div className="image-placeholder">
+                                    Click "Pick Random Image" to start
+                                </div>
+                            )}
                         </div>
-                    ))}
-                </div>
-            )}
-        </div>
+
+                        {/* Ground Truth appears right after image is selected */}
+                        {gtLabel !== null && (
+                            <div className="result-item">
+                                <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
+                            </div>
+                        )}
+
+                        <button onClick={handleRunInference} disabled={!selectedImage || isProcessing || !session}>
+                            {isProcessing ? "Processing..." : "Run Inference"}
+                        </button>
+
+                        {results.length > 0 && (
+                            <div className="results-container">
+                                {results.map((result, index) => (
+                                    <div key={index} className="result-item">
+                                        <span className="result-label">{result.label}:</span> {result.value}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </>
     );
 }
