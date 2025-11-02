@@ -1,7 +1,9 @@
 // src/FundusDemo.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import * as ort from "onnxruntime-web";
 const modelUrl = `${import.meta.env.BASE_URL}mlp_student.onnx`;
+const wasmUrl = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/ort-wasm-simd-threaded.wasm";
+
 // Pin to version 1.20.0 to avoid SessionOptions constructor issue
 ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/";
 // Disable JSEP and threads for compatibility
@@ -13,80 +15,119 @@ const NORMALIZE_MEAN = [0.485, 0.456, 0.406];
 const NORMALIZE_STD = [0.229, 0.224, 0.225];
 const IMG_SIZE = 224;
 
-// Enhanced model loader with progress tracking
+// CORRECTED: Model loader with robust byte-based progress tracking
 function useModelLoader() {
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
     const [progress, setProgress] = useState(0);
+    const [loadingStage, setLoadingStage] = useState("Downloading Model...");
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        let isMounted = true;
+        const controller = new AbortController();
+        const signal = controller.signal;
+
+        // --- REVISED Helper function to download with progress ---
+        // It now reports back chunk sizes and the total file size
+        const downloadWithProgress = async (url, onChunk, onTotalSizeKnown) => {
+            const response = await fetch(url, { signal });
+            if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+            const contentLength = response.headers.get('Content-Length');
+            if (!contentLength) throw new Error('Content-Length header is missing.');
+            const totalBytes = parseInt(contentLength, 10);
+            
+            // Report the total size of this specific file to the main loader
+            onTotalSizeKnown(totalBytes);
+
+            const reader = response.body.getReader();
+            const chunks = [];
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                // Report the size of the chunk just downloaded
+                onChunk(value.length);
+            }
+            
+            // Assemble the final buffer
+            let totalLength = 0;
+            for (const chunk of chunks) totalLength += chunk.length;
+            const result = new Uint8Array(totalLength);
+            let position = 0;
+            for (const chunk of chunks) {
+                result.set(chunk, position);
+                position += chunk.length;
+            }
+            return result.buffer;
+        };
+
         async function loadModel() {
-            console.log(`[ModelLoader] Starting model load from: ${modelUrl}`);
+            console.log(`[ModelLoader] Starting combined load process.`);
             setLoading(true);
             setProgress(0);
             setError(null);
+            
+            let totalExpectedBytes = 0;
+            let totalDownloadedBytes = 0;
+
+            // This function will be called to update the progress bar
+            const updateProgress = () => {
+                if (isMounted && totalExpectedBytes > 0) {
+                    const combinedProgress = (totalDownloadedBytes / totalExpectedBytes) * 100;
+                    setProgress(Math.round(combinedProgress));
+                }
+            };
+
             try {
-                // Use XMLHttpRequest for progress tracking
-                const xhr = new XMLHttpRequest();
-                xhr.open('GET', modelUrl, true);
-                xhr.responseType = 'arraybuffer';
-
-                xhr.addEventListener('progress', (event) => {
-                    if (event.lengthComputable) {
-                        const percentComplete = (event.loaded / event.total) * 100;
-                        setProgress(Math.round(percentComplete));
-                        console.log(`[ModelLoader] Download progress: ${percentComplete.toFixed(1)}% (${event.loaded}/${event.total} bytes)`);
+                // --- Step 1: Download the main model ---
+                setLoadingStage("Downloading Model...");
+                const modelBuffer = await downloadWithProgress(
+                    modelUrl, 
+                    (chunkBytes) => { // Callback for each chunk
+                        totalDownloadedBytes += chunkBytes;
+                        updateProgress();
+                    },
+                    (fileSize) => { // Callback for the total file size
+                        totalExpectedBytes += fileSize;
+                        updateProgress();
                     }
-                });
+                );
+                console.log(`[ModelLoader] Model downloaded.`);
 
-                xhr.addEventListener('load', () => {
-                    if (xhr.status === 200) {
-                        console.log(`[ModelLoader] Model fetched successfully, size: ${xhr.response.byteLength} bytes`);
-                        const modelBuffer = xhr.response;
-                        
-                        // Create session without SessionOptions constructor
-                        const sessionOptions = {
-                            executionProviders: ['wasm']
-                        };
+                // --- Step 2: Initialize the session ---
+                setLoadingStage("Creating ONNX session...");
+                const sessionOptions = { executionProviders: ['wasm'] };
+                const sess = await ort.InferenceSession.create(modelBuffer, sessionOptions);
+                
+                if (!isMounted) return;
+                console.log(`[ModelLoader] ONNX session created successfully.`);
+                setSession(sess);
+                setProgress(100); // Ensure it ends at 100
+                setLoading(false);
 
-                        console.log(`[ModelLoader] Creating ONNX session with WASM provider...`);
-                        ort.InferenceSession.create(modelBuffer, sessionOptions).then((sess) => {
-                            console.log(`[ModelLoader] ONNX session created successfully. Input names:`, sess.inputNames);
-                            console.log(`[ModelLoader] Output names:`, sess.outputNames);
-                            setSession(sess);
-                            setProgress(100); // Complete
-                            setLoading(false);
-                        }).catch((err) => {
-                            console.error(`[ModelLoader] Session creation failed:`, err);
-                            setError(err);
-                            setLoading(false);
-                        });
-                    } else {
-                        const err = new Error(`HTTP ${xhr.status} ${xhr.statusText}`);
-                        console.error(`[ModelLoader] Fetch error:`, err);
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.log(`[ModelLoader] Model load was aborted.`);
+                } else {
+                    console.error(`[ModelLoader] Error during model load:`, err);
+                    if (isMounted) {
                         setError(err);
                         setLoading(false);
                     }
-                });
-
-                xhr.addEventListener('error', (err) => {
-                    console.error(`[ModelLoader] Network error:`, err);
-                    setError(err);
-                    setLoading(false);
-                });
-
-                xhr.send();
-            } catch (err) {
-                console.error(`[ModelLoader] Unexpected error:`, err);
-                setError(err);
-                setLoading(false);
+                }
             }
         }
+
         loadModel();
+
+        return () => {
+            isMounted = false;
+            controller.abort();
+        };
     }, []);
 
-    return { session, loading, progress, error };
+    return { session, loading, progress, loadingStage, error };
 }
 
 const preprocessImage = (imageSrc) => {
@@ -106,13 +147,11 @@ const preprocessImage = (imageSrc) => {
 
                 const tensorData = new Float32Array(3 * IMG_SIZE * IMG_SIZE);
                 let currentRow = 0;
-                const chunkSize = 32; // You can try 16 if 32 is still too much
+                const chunkSize = 32;
 
-                // Define the processing function that will be called recursively via rAF
                 const processChunk = () => {
                     const endRow = Math.min(currentRow + chunkSize, IMG_SIZE);
                     
-                    // The synchronous processing for this chunk
                     for (let row = currentRow; row < endRow; row++) {
                         for (let x = 0; x < IMG_SIZE; x++) {
                             const idx = (row * IMG_SIZE + x) * 4;
@@ -140,17 +179,14 @@ const preprocessImage = (imageSrc) => {
                     currentRow = endRow;
                     
                     if (currentRow < IMG_SIZE) {
-                        // Schedule the next chunk. This clears the call stack.
                         requestAnimationFrame(processChunk);
                     } else {
-                        // All chunks are processed, create the tensor and resolve
                         const tensor = new ort.Tensor('float32', tensorData, [1, 3, IMG_SIZE, IMG_SIZE]);
                         console.log(`[Preprocess] Tensor ready: shape [1,3,${IMG_SIZE},${IMG_SIZE}]`);
                         resolve(tensor);
                     }
                 };
 
-                // Start the processing
                 requestAnimationFrame(processChunk);
 
             } catch (err) {
@@ -166,7 +202,6 @@ const preprocessImage = (imageSrc) => {
     });
 };
 
-// Compute softmax
 const computeProbs = (logits) => {
     const output = Array.from(logits);
     console.log(`[Probs] Computing softmax from logits:`, output);
@@ -181,7 +216,7 @@ const computeProbs = (logits) => {
 };
 
 export default function FundusDemo() {
-    const { session, loading: modelLoading, progress, error: modelError } = useModelLoader();
+    const { session, loading: modelLoading, progress, loadingStage, error: modelError } = useModelLoader();
     const [showDemo, setShowDemo] = useState(false);
     const [testSplit, setTestSplit] = useState([]);
     const [testSplitLoading, setTestSplitLoading] = useState(true);
@@ -191,7 +226,6 @@ export default function FundusDemo() {
     const [results, setResults] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Fetch test split data (only original_path and class_label_remapped)
     useEffect(() => {
         async function fetchTestSplit() {
             console.log(`[TestSplit] Fetching test_split_preproc.json...`);
@@ -205,7 +239,6 @@ export default function FundusDemo() {
                     throw err;
                 }
                 const data = await res.json();
-                // Filter to only needed fields
                 const filteredData = data.map(({ original_path, class_label_remapped }) => ({
                     original_path,
                     class_label_remapped
@@ -250,7 +283,6 @@ export default function FundusDemo() {
 
         setIsProcessing(true);
         try {
-            // Preprocess image to tensor
             const tensor = await preprocessImage(selectedImage);
             
             const start = performance.now();
@@ -308,10 +340,9 @@ export default function FundusDemo() {
             </div>
             
             <div className="fundus-demo">
-                {/* Model Loading Progress */}
                 {modelLoading && (
                     <div className="loading-container">
-                        <h3>Downloading Model ({progress}%)</h3>
+                        <h3>{loadingStage}</h3>
                         <div className="progress-bar">
                             <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                         </div>
@@ -325,7 +356,7 @@ export default function FundusDemo() {
                     </div>
                 )}
 
-                {testSplitLoading && <p>Loading test split...</p>}
+                {testSplitLoading}
                 {testSplitError && (
                     <div className="error">
                         <h3>Test Split Error</h3>
@@ -356,7 +387,6 @@ export default function FundusDemo() {
                             )}
                         </div>
 
-                        {/* Ground Truth appears right after image is selected */}
                         {gtLabel !== null && (
                             <div className="result-item">
                                 <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
