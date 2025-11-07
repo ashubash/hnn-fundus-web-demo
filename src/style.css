@@ -400,25 +400,6 @@ html, body {
   fill: #4A90E2 !important;              /* lock original blue */
 }
 
-/* Dark mode auto-adapt */
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #111 !important;   /* overrides your #fafafa */
-    color: #eee;
-  }
-  .navbar {
-    background-color: #1e3a8a;      /* deeper blue */
-  }
-  .fundus-demo {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-  }
- @media (prefers-color-scheme: dark) {
-  .logo-circle { fill: #60a5fa !important; }
-  .logo-svg:focus-visible { outline-color: #60a5fa; }
-}
-}
-
 .clickable-logo {
   clip-path: circle(70px at 70px 70px) !important;
   overflow: hidden !important;
