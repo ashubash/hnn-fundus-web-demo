@@ -523,7 +523,7 @@ export default function FundusDemo() {
 
                     <Typography variant="subtitle1" sx={{mb:2, fontWeight: 'bold', color: '#000'}}>Conformal Prediction Metrics</Typography>
                     <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Coverage: {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}%</Typography>
-                    <Typography sx={{mb:1, color: '#000'}}>The true diagnosis is included in the model's predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time, showing an excelling in safety requirements.</Typography>
+                    <Typography sx={{mb:1, color: '#000'}}>The true diagnosis is included in the model's predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time.</Typography>
                     
                     <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Average Set Size: {Math.round(MODEL_DATA.conformal.avg_set_size * 100) / 100}</Typography>
                     <Typography sx={{color: '#000'}}>The model typically provides one clear classification (1.07) per image, thereby prescribing deterministic predictions.</Typography>
