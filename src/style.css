@@ -475,11 +475,6 @@ html, body {
   transition: transform 0.35s ease;
 }
 
-.clickable-logo:hover .logo-circle {
-  fill: #6ab8ff;
-  transition: fill 0.35s ease;
-}
-
 .clickable-logo:hover .shadow-group {
   filter: url(#hover-shadow);
 }
