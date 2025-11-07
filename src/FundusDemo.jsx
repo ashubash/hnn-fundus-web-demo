@@ -388,51 +388,98 @@ export default function FundusDemo() {
         </>
       );
     }
+return (
+    <>
+        <nav className="navbar">
+          <div className="navbar-text">Fundus Classification Model Demo</div>
+        </nav>
+        
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: '2px', 
+          flex: 1,
+          padding: 0,
+          margin: 0,
+          background: 'transparent'
+        }}>          
+            <svg
+            className="logo-svg clickable-logo"
+            width="140"
+            height="140"
+            viewBox="0 0 40 40"
+            xmlns="http://www.w3.org/2000/svg"
+            onClick={() => setIsModalOpen(true)}
+            role="button"
+            aria-label="Open Model Details"
+            tabIndex={0}
+            title="Model Details"
+            style={{ 
+                cursor: 'pointer',
+                background: 'transparent',
+                padding: 0,
+                margin: 0,
+                display: 'block',
+                outline: 'none'
+            }}
+            >
+            <defs>
+                {/* Soft glow filter */}
+                <filter id="softglow" x="-200%" y="-200%" width="500%" height="500%">
+                <feGaussianBlur stdDeviation="5.5" result="blur"/>
+                <feFlood flood-color="#dcd4efff" flood-opacity="0.48"/>
+                <feComposite in2="blur" operator="in"/>
+                <feMerge>
+                    <feMergeNode/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+                </filter>
 
-    return (
-        <>
-            <nav className="navbar">
-              <div className="navbar-text">Fundus Classification Model Demo</div>
-            </nav>
+                {/* Larger circular clip for feather-soft edges */}
+                <clipPath id="circle-clip">
+                <circle cx="20" cy="20" r="12"/>
+                </clipPath>
+            </defs>
+
+            <g clip-path="url(#circle-clip)">
+                <g className="breathe-group">
+                {/* Larger face (r=11.5 → ~15% bigger), perfectly centered */}
+                <circle className="logo-circle" cx="20" cy="20" r="11.5" fill="#4A90E2" stroke="#ffffff" strokeWidth="1.3"/>
+                
+                {/* Proportionally larger eyes, shifted up slightly for balance */}
+                <circle cx="16.2" cy="15" r="2" fill="#ffffff"/>
+                <circle cx="23.8" cy="15" r="2" fill="#ffffff"/>
+
+                {/* "MODEL" smile shifted higher – curve now peaks at y=29 (was 32), starts at y=19 (was 17) → text sits ~10% higher */}
+                <path id="smilePath" d="M 10 21 Q 20 29 30 21" fill="none"/>
+                <text fontSize="2.45" fill="#ffffff" fontFamily="Arial, sans-serif" fontWeight="bold" textAnchor="middle">
+                    <textPath href="#smilePath" startOffset="50%" textLength="10.5" dy="-5.8">
+                    MODEL
+                    </textPath>
+                </text>
+
+                {/* Larger pulse source for bigger button */}
+                <g className="pulse-ripple" filter="url(#softglow)">
+                    <circle cx="20" cy="20" r="15" fill="#ffffff"/>
+                </g>
+                <g className="pulse-ripple delayed" filter="url(#softglow)">
+                    <circle cx="20" cy="20" r="15" fill="#ffffff"/>
+                </g>
+                </g>
+            </g>
+            </svg>
             
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              gap: '2px', 
-              flex: 1 
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'center', margin: 0 }}>
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  style={{background:'none', border:'none', cursor:'pointer', padding:0, margin:0}}
-                  title="Model Details"
-                >
-                  <svg width="160" height="132" viewBox="0 0 40 34" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="20" cy="15" r="10" fill="#4A90E2" stroke="#FFF" strokeWidth="1"/>
-                  <circle cx="16" cy="12" r="2" fill="#FFF"/>
-                  <circle cx="24" cy="12" r="2" fill="#FFF"/>
-                  <path id="smilePath" d="M 10 15 Q 20 27 30 15" fill="none"/>
-                  <text font-size="2.1" fill="#FFF" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">
-                      <textPath href="#smilePath" startOffset="50%" textLength="9" dy="-5">
-                      MODEL
-                      </textPath>
-                  </text>
-                  </svg>
-                </button>
-              </div>
-              
-              <div className="fundus-demo" style={{ marginTop: '0px' }}>
-                  {modelLoading && (
-                      <div className="loading-container">
-                          <h3>{loadingStage}</h3>
-                          <div className="progress-bar">
-                              <div className="progress-fill" style={{ width: `${progress}%` }}></div>
-                          </div>
-                      </div>
-                  )}
-
+            <div className="fundus-demo" style={{ marginTop: '0px' }}>
+                {modelLoading && (
+                    <div className="loading-container">
+                        <h3>{loadingStage}</h3>
+                        <div className="progress-bar">
+                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                        </div>
+                    </div>
+                )}
                   {modelError && (
                       <div className="error">
                           <h3>Model Load Error</h3>

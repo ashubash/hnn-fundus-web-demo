@@ -391,3 +391,93 @@ html, body {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* ======== INVISIBLE-BOUNDARY LOGO – 100% BACKGROUND BLEND + DARK MODE ======== */
+.logo-svg:hover .logo-circle,
+.logo-svg:focus-visible .logo-circle {
+  fill: #4A90E2 !important;              /* lock original blue */
+}
+
+/* Dark mode auto-adapt */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #111 !important;   /* overrides your #fafafa */
+    color: #eee;
+  }
+  .navbar {
+    background-color: #1e3a8a;      /* deeper blue */
+  }
+  .fundus-demo {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+ @media (prefers-color-scheme: dark) {
+  .logo-circle { fill: #60a5fa !important; }
+  .logo-svg:focus-visible { outline-color: #60a5fa; }
+}
+}
+
+.clickable-logo {
+  clip-path: circle(70px at 70px 70px) !important;
+  overflow: hidden !important;
+  contain: layout style paint;
+}
+
+/* 8s total cycle = 5s dead silence + 3s ripple burst (repeats forever) */
+.breathe-group {
+  animation: breathe 8s ease-in-out infinite;
+  transform-origin: center;
+}
+.pulse-ripple {
+  transform-origin: center;
+  animation: soft-glow-pulse 8s ease-out infinite;
+  opacity: 0;
+}
+.pulse-ripple.delayed {
+  animation-delay: 1.5s;   /* perfect stagger – no extra gaps */
+}
+
+/* ==== 5s TOTAL SILENCE, then 3s dreamy burst ==== */
+@keyframes soft-glow-pulse {
+  0%, 62.5% {
+    transform: scale(0.05);
+    opacity: 0;
+  }
+  68.125% {
+    opacity: 0.35;        /* tiny bit brighter */
+  }
+  86.875% {
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(3.0);  /* was 2.8 – fills the bigger circle perfectly */
+    opacity: 0;
+  }
+}
+
+@keyframes breathe {
+  0%, 88.75% {                    /* 5s + most of active = still */
+    transform: scale(1);
+  }
+  93.25% {                        /* subtle "thump" as ripples hit edge */
+    transform: scale(1.09);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Hover effects */
+.clickable-logo:hover {
+  transform: translateY(-4px);
+  transition: transform 0.35s ease;
+}
+
+.clickable-logo:hover .logo-circle {
+  fill: #6ab8ff;
+  transition: fill 0.35s ease;
+}
+
+.clickable-logo:hover .shadow-group {
+  filter: url(#hover-shadow);
+}
