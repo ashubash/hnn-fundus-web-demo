@@ -1,6 +1,6 @@
 /* src/style.css */
 
-/* Reset and base styles */
+/* Force pure white background (overrides everything, including dark mode) */
 html, body {
   margin: 0;
   padding: 0;
@@ -8,11 +8,11 @@ html, body {
   width: 100%;
   box-sizing: border-box;
   font-family: Arial, sans-serif;
-  background-color: #fafafa; /* Whiter off-white background */
+  background: #ffffff !important;  /* Pure white, forced */
   overflow-x: hidden;
 }
 
-/* Root container for React app */
+/* Root container */
 #root {
   display: flex;
   flex-direction: column;
@@ -21,9 +21,10 @@ html, body {
   width: 100%;
   box-sizing: border-box;
   padding-top: 60px;
+  background: transparent;
 }
 
-/* Navbar */
+/* Navbar - slightly lighter blue to pop on pure white */
 .navbar {
   position: fixed;
   top: 0;
@@ -31,7 +32,7 @@ html, body {
   width: 100%;
   height: 60px;
   background-color: #1976d2;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -104,22 +105,23 @@ html, body {
   /* Added active state for consistency */
   background-color: #104e90;
 }
-
-/* Main demo container - now transparent with flush borders */
+/* Fundus demo container - clean card on white */
 .fundus-demo {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 15px;
   padding: 20px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
   width: 100%;
   max-width: 600px;
   margin: 10px auto 0;
   box-sizing: border-box;
 }
+
 
 /* Image container - now with straight, flush edges */
 .image-container {
@@ -185,10 +187,10 @@ html, body {
   margin: 5px 0;
 }
 
-/* Result label - bold */
+/* Text colors - slightly darker for better contrast on pure white */
 .result-label {
   font-weight: bold;
-  color: #333;
+  color: #222 !important;
 }
 
 /* Output text */
