@@ -516,20 +516,17 @@ export default function FundusDemo() {
                     <Typography variant="h6" sx={{mb:3, fontWeight: 'bold', color: '#000'}}>Student Model Information</Typography>
                     <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Test Accuracy: {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}%</Typography>
                     <Typography sx={{mb:3, color: '#000'}}>
-                        This means the simplified model correctly identifies {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}% of eye images on its own, without relying on the more complex original system.
+                        This student model correctly identifies {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}% of eye images on its own, without relying on the more complex original system.
                     </Typography>
 
                     <Divider sx={{my: 2, borderColor: '#e0e0e0'}} />
 
                     <Typography variant="subtitle1" sx={{mb:2, fontWeight: 'bold', color: '#000'}}>Conformal Prediction Metrics</Typography>
-                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Alpha (Risk Level): {MODEL_DATA.conformal.alpha}</Typography>
-                    <Typography sx={{mb:1, color: '#000'}}>This sets the maximum chance of an incorrect prediction at just 5%.</Typography>
-                    
                     <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Coverage: {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}%</Typography>
-                    <Typography sx={{mb:1, color: '#000'}}>This means the true diagnosis is included in our predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time, meeting safety requirements.</Typography>
+                    <Typography sx={{mb:1, color: '#000'}}>The true diagnosis is included in the model's predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time, showing an excelling in safety requirements.</Typography>
                     
                     <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Average Set Size: {Math.round(MODEL_DATA.conformal.avg_set_size * 100) / 100}</Typography>
-                    <Typography sx={{color: '#000'}}>This means the model typically provides one clear answer (1.07 Classification sets) per image, prescribing high confidence rates.</Typography>
+                    <Typography sx={{color: '#000'}}>The model typically provides one clear classification (1.07) per image, thereby prescribing deterministic predictions.</Typography>
                 </Box>
             </Modal>
 
