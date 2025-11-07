@@ -1,7 +1,14 @@
 // src/FundusDemo.jsx
 import React, { useEffect, useState } from "react";
 import * as ort from "onnxruntime-web";
-const modelUrl = `${import.meta.env.BASE_URL}mlp_student.onnx`;
+import Box from '@mui/material/Box';
+import Modal from '@mui/material/Modal';
+import Typography from '@mui/material/Typography';
+import Divider from '@mui/material/Divider';
+import IconButton from '@mui/material/IconButton';
+import CloseIcon from '@mui/icons-material/Close';
+
+const modelUrl = `${import.meta.env.BASE_URL}light_hgnn_student.onnx`;
 const wasmUrl = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/ort-wasm-simd-threaded.wasm";
 
 // Pin to version 1.20.0 to avoid SessionOptions constructor issue
@@ -14,6 +21,31 @@ const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
 const NORMALIZE_MEAN = [0.485, 0.456, 0.406];
 const NORMALIZE_STD = [0.229, 0.224, 0.225];
 const IMG_SIZE = 224;
+
+// Model performance data
+const MODEL_DATA = {
+  "conformal": {
+    "alpha": 0.05,
+    "coverage": 0.9855177407675597,
+    "avg_set_size": 1.0702389572773352,
+    "coverage_error": 0.03551774076755976
+  },
+  "student": {
+    "test_acc": 0.9319333816075308
+  }
+};
+
+const modalStyle = {
+  position:'absolute',
+  top:'50%',
+  left:'50%',
+  transform:'translate(-50%,-50%)',
+  width:440,
+  bgcolor:'#fff',
+  borderRadius:'12px',
+  boxShadow:24,
+  p:4,
+};
 
 // CORRECTED: Model loader with robust byte-based progress tracking
 function useModelLoader() {
@@ -36,6 +68,10 @@ function useModelLoader() {
             const contentLength = response.headers.get('Content-Length');
             if (!contentLength) throw new Error('Content-Length header is missing.');
             const totalBytes = parseInt(contentLength, 10);
+            
+            // NEW: Log model name and size
+            const modelName = url.split('/').pop();
+            console.log(`[ModelLoader] Fetching model: ${modelName}, size: ${totalBytes} bytes`);
             
             // Report the total size of this specific file to the main loader
             onTotalSizeKnown(totalBytes);
@@ -218,6 +254,7 @@ const computeProbs = (logits) => {
 export default function FundusDemo() {
     const { session, loading: modelLoading, progress, loadingStage, error: modelError } = useModelLoader();
     const [showDemo, setShowDemo] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [testSplit, setTestSplit] = useState([]);
     const [testSplitLoading, setTestSplitLoading] = useState(true);
     const [testSplitError, setTestSplitError] = useState(null);
@@ -319,27 +356,63 @@ export default function FundusDemo() {
     };
 
     if (!showDemo) {
-        return (
-            <>
-                <div className="title-container">
-                    <h1>HNN to MLP Distillation</h1>
-                    <h2>Fundus Classification Web Demo</h2>
-                </div>
-                <button className="try-demo-button" onClick={handleTryDemo}>
-                    Try Demo
-                </button>
-            </>
-        );
+      return (
+        <>
+          <nav className="navbar">
+            <div className="navbar-text">Fundus Classification Model Demo</div>
+          </nav>
+          <div style={{
+            display:'flex',
+            flexDirection:'column',
+            alignItems:'center',
+            justifyContent:'center',
+            gap:'32px',
+            flex: 1
+          }}>
+            <svg width="160" height="120" viewBox="0 0 40 30" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="20" cy="15" r="10" fill="#4A90E2" stroke="#FFF" strokeWidth="1"/>
+              <circle cx="16" cy="12" r="2" fill="#FFF"/>
+              <circle cx="24" cy="12" r="2" fill="#FFF"/>
+            </svg>
+
+            <button className="try-demo-button" onClick={handleTryDemo}>
+              Try Demo
+            </button>
+          </div>
+          <footer className="footer">
+            <p>&copy; 2025 Fundus Demo. Built with ONNX Runtime Web.</p>
+          </footer>
+        </>
+      );
     }
 
     return (
         <>
-            <div className="title-container">
-                <h1>HNN to MLP Distillation</h1>
-                <h2>Fundus Classification Web Demo</h2>
+            <nav className="navbar">
+              <div className="navbar-text">Fundus Classification Model Demo</div>
+            </nav>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0px', marginBottom: '0px' }}>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                style={{background:'none', border:'none', cursor:'pointer', padding:0, margin:0}}
+                title="Model Details"
+              >
+                <svg width="160" height="132" viewBox="0 0 40 34" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="20" cy="15" r="10" fill="#4A90E2" stroke="#FFF" strokeWidth="1"/>
+                <circle cx="16" cy="12" r="2" fill="#FFF"/>
+                <circle cx="24" cy="12" r="2" fill="#FFF"/>
+                <path id="smilePath" d="M 10 15 Q 20 27 30 15" fill="none"/>
+                <text font-size="2.1" fill="#FFF" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">
+                    <textPath href="#smilePath" startOffset="50%" textLength="9" dy="-5">
+                    MODEL
+                    </textPath>
+                </text>
+                </svg>
+              </button>
             </div>
             
-            <div className="fundus-demo">
+            <div className="fundus-demo" style={{ marginTop: '0px' }}>
                 {modelLoading && (
                     <div className="loading-container">
                         <h3>{loadingStage}</h3>
@@ -356,7 +429,6 @@ export default function FundusDemo() {
                     </div>
                 )}
 
-                {testSplitLoading}
                 {testSplitError && (
                     <div className="error">
                         <h3>Test Split Error</h3>
@@ -366,6 +438,11 @@ export default function FundusDemo() {
 
                 {!modelLoading && !modelError && (
                     <>
+                        {testSplitLoading && (
+                            <div className="loading-container">
+                                <h3>Loading test data...</h3>
+                            </div>
+                        )}
                         <button onClick={handlePickRandom} disabled={testSplitLoading || !!testSplitError || !testSplit.length}>
                             Pick Random Image
                         </button>
@@ -409,6 +486,44 @@ export default function FundusDemo() {
                     </>
                 )}
             </div>
+
+            <Modal open={isModalOpen} onClose={()=>setIsModalOpen(false)}>
+  <Box sx={modalStyle}>
+    <IconButton
+      aria-label="close"
+      onClick={()=>setIsModalOpen(false)}
+      sx={{
+        position: 'absolute',
+        right: 8,
+        top: 8,
+        color: (theme) => theme.palette.grey[500],
+      }}
+    >
+      <CloseIcon />
+    </IconButton>
+                    <Typography variant="h6" sx={{mb:3, fontWeight: 'bold', color: '#000'}}>Student Model Information</Typography>
+                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Test Accuracy: {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}%</Typography>
+                    <Typography sx={{mb:3, color: '#000'}}>
+                        This means the simplified model correctly identifies {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}% of eye images on its own, without relying on the more complex original system.
+                    </Typography>
+
+                    <Divider sx={{my: 2, borderColor: '#e0e0e0'}} />
+
+                    <Typography variant="subtitle1" sx={{mb:2, fontWeight: 'bold', color: '#000'}}>Conformal Prediction Metrics</Typography>
+                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Alpha (Risk Level): {MODEL_DATA.conformal.alpha}</Typography>
+                    <Typography sx={{mb:1, color: '#000'}}>This sets the maximum chance of an incorrect prediction at just 5%.</Typography>
+                    
+                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Coverage: {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}%</Typography>
+                    <Typography sx={{mb:1, color: '#000'}}>This means the true diagnosis is included in our predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time, meeting safety requirements.</Typography>
+                    
+                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Average Set Size: {Math.round(MODEL_DATA.conformal.avg_set_size * 100) / 100}</Typography>
+                    <Typography sx={{color: '#000'}}>This means the model typically provides one clear answer (1.07 Classification sets) per image, prescribing high confidence rates.</Typography>
+                </Box>
+            </Modal>
+
+            <footer className="footer">
+                <p>&copy; 2025 Fundus Demo. Built with ONNX Runtime Web.</p>
+            </footer>
         </>
     );
 }
