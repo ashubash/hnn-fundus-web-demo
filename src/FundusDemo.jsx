@@ -40,11 +40,14 @@ const modalStyle = {
   top:'50%',
   left:'50%',
   transform:'translate(-50%,-50%)',
-  width:440,
+  width: { xs: '90vw', sm: 440 },
+  maxWidth: '90vw',
+  maxHeight: '90vh',
+  overflowY: 'auto',
   bgcolor:'#fff',
   borderRadius:'12px',
   boxShadow:24,
-  p:4,
+  p: { xs: 2, sm: 4 },
 };
 
 // CORRECTED: Model loader with robust byte-based progress tracking
@@ -392,99 +395,108 @@ export default function FundusDemo() {
               <div className="navbar-text">Fundus Classification Model Demo</div>
             </nav>
             
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0px', marginBottom: '0px' }}>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                style={{background:'none', border:'none', cursor:'pointer', padding:0, margin:0}}
-                title="Model Details"
-              >
-                <svg width="160" height="132" viewBox="0 0 40 34" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="20" cy="15" r="10" fill="#4A90E2" stroke="#FFF" strokeWidth="1"/>
-                <circle cx="16" cy="12" r="2" fill="#FFF"/>
-                <circle cx="24" cy="12" r="2" fill="#FFF"/>
-                <path id="smilePath" d="M 10 15 Q 20 27 30 15" fill="none"/>
-                <text font-size="2.1" fill="#FFF" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">
-                    <textPath href="#smilePath" startOffset="50%" textLength="9" dy="-5">
-                    MODEL
-                    </textPath>
-                </text>
-                </svg>
-              </button>
-            </div>
-            
-            <div className="fundus-demo" style={{ marginTop: '0px' }}>
-                {modelLoading && (
-                    <div className="loading-container">
-                        <h3>{loadingStage}</h3>
-                        <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
-                        </div>
-                    </div>
-                )}
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '2px', 
+              flex: 1 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'center', margin: 0 }}>
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  style={{background:'none', border:'none', cursor:'pointer', padding:0, margin:0}}
+                  title="Model Details"
+                >
+                  <svg width="160" height="132" viewBox="0 0 40 34" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="20" cy="15" r="10" fill="#4A90E2" stroke="#FFF" strokeWidth="1"/>
+                  <circle cx="16" cy="12" r="2" fill="#FFF"/>
+                  <circle cx="24" cy="12" r="2" fill="#FFF"/>
+                  <path id="smilePath" d="M 10 15 Q 20 27 30 15" fill="none"/>
+                  <text font-size="2.1" fill="#FFF" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle">
+                      <textPath href="#smilePath" startOffset="50%" textLength="9" dy="-5">
+                      MODEL
+                      </textPath>
+                  </text>
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="fundus-demo" style={{ marginTop: '0px' }}>
+                  {modelLoading && (
+                      <div className="loading-container">
+                          <h3>{loadingStage}</h3>
+                          <div className="progress-bar">
+                              <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                          </div>
+                      </div>
+                  )}
 
-                {modelError && (
-                    <div className="error">
-                        <h3>Model Load Error</h3>
-                        <p>{modelError.message}</p>
-                    </div>
-                )}
+                  {modelError && (
+                      <div className="error">
+                          <h3>Model Load Error</h3>
+                          <p>{modelError.message}</p>
+                      </div>
+                  )}
 
-                {testSplitError && (
-                    <div className="error">
-                        <h3>Test Split Error</h3>
-                        <p>{testSplitError}</p>
-                    </div>
-                )}
+                  {testSplitError && (
+                      <div className="error">
+                          <h3>Test Split Error</h3>
+                          <p>{testSplitError}</p>
+                      </div>
+                  )}
 
-                {!modelLoading && !modelError && (
-                    <>
-                        {testSplitLoading && (
-                            <div className="loading-container">
-                                <h3>Loading test data...</h3>
-                            </div>
-                        )}
-                        <button onClick={handlePickRandom} disabled={testSplitLoading || !!testSplitError || !testSplit.length}>
-                            Pick Random Image
-                        </button>
+                  {!modelLoading && !modelError && (
+                      <>
+                          {testSplitLoading && (
+                              <div className="loading-container">
+                                  <h3>Loading test data...</h3>
+                              </div>
+                          )}
+                          <button onClick={handlePickRandom} disabled={testSplitLoading || !!testSplitError || !testSplit.length}>
+                              Pick Random Image
+                          </button>
 
-                        <div className="image-container">
-                            {selectedImage ? (
-                                <img
-                                    src={selectedImage}
-                                    alt="Fundus"
-                                    onError={(e) => {
-                                        console.error(`[Image] Load failed for: ${selectedImage}`);
-                                        e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjI0IiBoZWlnaHQ9IjIyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4=';
-                                    }}
-                                />
-                            ) : (
-                                <div className="image-placeholder">
-                                    Click "Pick Random Image" to start
-                                </div>
-                            )}
-                        </div>
+                          <div className="image-container">
+                              {selectedImage ? (
+                                  <img
+                                      src={selectedImage}
+                                      alt="Fundus"
+                                      onError={(e) => {
+                                          console.error(`[Image] Load failed for: ${selectedImage}`);
+                                          e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjI0IiBoZWlnaHQ9IjIyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4=';
+                                      }}
+                                  />
+                              ) : (
+                                  <div className="image-placeholder">
+                                      Click "Pick Random Image" to start
+                                  </div>
+                              )}
+                          </div>
 
-                        {gtLabel !== null && (
-                            <div className="result-item">
-                                <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
-                            </div>
-                        )}
+                          {gtLabel !== null && (
+                              <div className="result-item">
+                                  <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
+                              </div>
+                          )}
 
-                        <button onClick={handleRunInference} disabled={!selectedImage || isProcessing || !session}>
-                            {isProcessing ? "Processing..." : "Run Inference"}
-                        </button>
+                          <button onClick={handleRunInference} disabled={!selectedImage || isProcessing || !session}>
+                              {isProcessing ? "Processing..." : "Run Inference"}
+                          </button>
 
-                        {results.length > 0 && (
-                            <div className="results-container">
-                                {results.map((result, index) => (
-                                    <div key={index} className="result-item">
-                                        <span className="result-label">{result.label}:</span> {result.value}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </>
-                )}
+                          {results.length > 0 && (
+                              <div className="results-container">
+                                  {results.map((result, index) => (
+                                      <div key={index} className="result-item">
+                                          <span className="result-label">{result.label}:</span> {result.value}
+                                      </div>
+                                  ))}
+                              </div>
+                          )}
+                      </>
+                  )}
+              </div>
             </div>
 
             <Modal open={isModalOpen} onClose={()=>setIsModalOpen(false)}>
