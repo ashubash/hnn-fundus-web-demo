@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
+import LogoButton from "./LogoButton";
 
 const modelUrl = `${import.meta.env.BASE_URL}light_hgnn_student.onnx`;
 const wasmUrl = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/ort-wasm-simd-threaded.wasm";
@@ -57,12 +58,10 @@ function useModelLoader() {
     const [progress, setProgress] = useState(0);
     const [loadingStage, setLoadingStage] = useState("Downloading Model...");
     const [error, setError] = useState(null);
-
     useEffect(() => {
         let isMounted = true;
         const controller = new AbortController();
         const signal = controller.signal;
-
         // --- REVISED Helper function to download with progress ---
         // It now reports back chunk sizes and the total file size
         const downloadWithProgress = async (url, onChunk, onTotalSizeKnown) => {
@@ -71,14 +70,13 @@ function useModelLoader() {
             const contentLength = response.headers.get('Content-Length');
             if (!contentLength) throw new Error('Content-Length header is missing.');
             const totalBytes = parseInt(contentLength, 10);
-            
+           
             // NEW: Log model name and size
             const modelName = url.split('/').pop();
             console.log(`[ModelLoader] Fetching model: ${modelName}, size: ${totalBytes} bytes`);
-            
+           
             // Report the total size of this specific file to the main loader
             onTotalSizeKnown(totalBytes);
-
             const reader = response.body.getReader();
             const chunks = [];
             while (true) {
@@ -88,7 +86,7 @@ function useModelLoader() {
                 // Report the size of the chunk just downloaded
                 onChunk(value.length);
             }
-            
+           
             // Assemble the final buffer
             let totalLength = 0;
             for (const chunk of chunks) totalLength += chunk.length;
@@ -100,16 +98,14 @@ function useModelLoader() {
             }
             return result.buffer;
         };
-
         async function loadModel() {
             console.log(`[ModelLoader] Starting combined load process.`);
             setLoading(true);
             setProgress(0);
             setError(null);
-            
+           
             let totalExpectedBytes = 0;
             let totalDownloadedBytes = 0;
-
             // This function will be called to update the progress bar
             const updateProgress = () => {
                 if (isMounted && totalExpectedBytes > 0) {
@@ -117,12 +113,11 @@ function useModelLoader() {
                     setProgress(Math.round(combinedProgress));
                 }
             };
-
             try {
                 // --- Step 1: Download the main model ---
                 setLoadingStage("Downloading Model...");
                 const modelBuffer = await downloadWithProgress(
-                    modelUrl, 
+                    modelUrl,
                     (chunkBytes) => { // Callback for each chunk
                         totalDownloadedBytes += chunkBytes;
                         updateProgress();
@@ -133,18 +128,16 @@ function useModelLoader() {
                     }
                 );
                 console.log(`[ModelLoader] Model downloaded.`);
-
                 // --- Step 2: Initialize the session ---
                 setLoadingStage("Creating ONNX session...");
                 const sessionOptions = { executionProviders: ['wasm'] };
                 const sess = await ort.InferenceSession.create(modelBuffer, sessionOptions);
-                
+               
                 if (!isMounted) return;
                 console.log(`[ModelLoader] ONNX session created successfully.`);
                 setSession(sess);
                 setProgress(100); // Ensure it ends at 100
                 setLoading(false);
-
             } catch (err) {
                 if (err.name === 'AbortError') {
                     console.log(`[ModelLoader] Model load was aborted.`);
@@ -157,15 +150,12 @@ function useModelLoader() {
                 }
             }
         }
-
         loadModel();
-
         return () => {
             isMounted = false;
             controller.abort();
         };
     }, []);
-
     return { session, loading, progress, loadingStage, error };
 }
 
@@ -180,43 +170,35 @@ const preprocessImage = (imageSrc) => {
                 canvas.height = IMG_SIZE;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
-
                 const imageData = ctx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
                 const data = imageData.data;
-
                 const tensorData = new Float32Array(3 * IMG_SIZE * IMG_SIZE);
                 let currentRow = 0;
                 const chunkSize = 32;
-
                 const processChunk = () => {
                     const endRow = Math.min(currentRow + chunkSize, IMG_SIZE);
-                    
+                   
                     for (let row = currentRow; row < endRow; row++) {
                         for (let x = 0; x < IMG_SIZE; x++) {
                             const idx = (row * IMG_SIZE + x) * 4;
                             const r = data[idx] / 255.0;
                             const g = data[idx + 1] / 255.0;
                             const b = data[idx + 2] / 255.0;
-
                             const normR = (r - NORMALIZE_MEAN[0]) / NORMALIZE_STD[0];
                             const normG = (g - NORMALIZE_MEAN[1]) / NORMALIZE_STD[1];
                             const normB = (b - NORMALIZE_MEAN[2]) / NORMALIZE_STD[2];
-
                             const outIdxR = row * IMG_SIZE + x;
                             const outIdxG = IMG_SIZE * IMG_SIZE + row * IMG_SIZE + x;
                             const outIdxB = 2 * IMG_SIZE * IMG_SIZE + row * IMG_SIZE + x;
-
                             tensorData[outIdxR] = normR;
                             tensorData[outIdxG] = normG;
                             tensorData[outIdxB] = normB;
                         }
                     }
-
                     const processedPct = ((endRow / IMG_SIZE) * 100).toFixed(0);
                     console.log(`[Preprocess] Rows ${currentRow}-${endRow} done (${processedPct}% of rows)`);
-
                     currentRow = endRow;
-                    
+                   
                     if (currentRow < IMG_SIZE) {
                         requestAnimationFrame(processChunk);
                     } else {
@@ -225,9 +207,7 @@ const preprocessImage = (imageSrc) => {
                         resolve(tensor);
                     }
                 };
-
                 requestAnimationFrame(processChunk);
-
             } catch (err) {
                 console.error(`[Preprocess] Error processing image:`, err);
                 reject(err);
@@ -265,6 +245,11 @@ export default function FundusDemo() {
     const [gtLabel, setGtLabel] = useState(null);
     const [results, setResults] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [prevSelectedImage, setPrevSelectedImage] = useState(null);
+    const [isRepeatInference, setIsRepeatInference] = useState(false);
+    // NEW:
+    const [isImageLoading, setIsImageLoading] = useState(false);
+    const [hasResults, setHasResults] = useState(false);
 
     useEffect(() => {
         async function fetchTestSplit() {
@@ -306,25 +291,37 @@ export default function FundusDemo() {
             console.warn(`[PickRandom] Skipped: loading=${testSplitLoading}, error=${!!testSplitError}, samples=${testSplit.length}`);
             return;
         }
-
+        // Don't allow picking a new image during inference
+        if (isProcessing) {
+            console.warn("[PickRandom] Skipped: inference in progress");
+            return;
+        }
         const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
         console.log(`[PickRandom] Selected: ${sample.original_path}, GT: ${CLASSES[sample.class_label_remapped]}`);
         setSelectedImage(sample.original_path);
         setGtLabel(sample.class_label_remapped);
+        // NEW: image is about to load → lock inference & clear old results
+        setIsImageLoading(true);
         setResults([]);
+        setHasResults(false);
+        setPrevSelectedImage(null); // Reset repeat flag on new image
+        setIsRepeatInference(false);
     };
 
     const handleRunInference = async () => {
-        console.log(`[Inference] Starting inference with session: ${!!session}, image: ${selectedImage}`);
-        if (!session || !selectedImage) {
-            console.warn(`[Inference] Skipped: missing session=${!session}, image=${!selectedImage}`);
+        console.log(
+            `[Inference] Start: session=${!!session}, image=${selectedImage}, isImageLoading=${isImageLoading}, isProcessing=${isProcessing}`
+        );
+        // Hard guard: no inference if image not ready or already processing
+        if (!session || !selectedImage || isImageLoading || isProcessing) {
+            console.warn("[Inference] Skipped: invalid state");
             return;
         }
-
         setIsProcessing(true);
+        setHasResults(false);
         try {
             const tensor = await preprocessImage(selectedImage);
-            
+           
             const start = performance.now();
             const inputName = session.inputNames[0];
             console.log(`[Inference] Feeding tensor to input: ${inputName}, shape: [${tensor.dims.join(', ')}]`);
@@ -333,26 +330,37 @@ export default function FundusDemo() {
             const outputName = session.outputNames[0];
             const output = resultsRun[outputName].data;
             console.log(`[Inference] Raw output from ${outputName}:`, output);
-
             const probs = computeProbs(output);
             let maxProb = 0, predIndex = 0;
             for (let i = 0; i < probs.length; i++) {
                 if (probs[i] > maxProb) { maxProb = probs[i]; predIndex = i; }
             }
             console.log(`[Inference] Prediction: ${CLASSES[predIndex]} (index ${predIndex}), confidence: ${(maxProb * 100).toFixed(2)}%`);
-
             const end = performance.now();
             const time = (end - start).toFixed(2);
             console.log(`[Inference] Completed in ${time} ms`);
-
-            setResults([
+            // Check for repeat inference
+            const repeat = selectedImage === prevSelectedImage;
+            setIsRepeatInference(repeat);
+            setPrevSelectedImage(selectedImage);
+            const newResults = [
                 { label: "Prediction", value: CLASSES[predIndex] },
                 { label: "Confidence", value: `${(maxProb * 100).toFixed(2)}%` },
                 { label: "Inference Time", value: `${time} ms` }
-            ]);
+            ];
+            setResults(newResults);
+            // Let React render them; then mark as shown in a microtask
+            queueMicrotask(() => {
+              setHasResults(true);
+            });
         } catch (err) {
             console.error(`[Inference] Error during run:`, err);
-            setResults([{ label: "Error", value: `Inference failed: ${err.message}` }]);
+            const newResults = [{ label: "Error", value: `Inference failed: ${err.message}` }];
+            setResults(newResults);
+            setIsRepeatInference(false);
+            queueMicrotask(() => {
+              setHasResults(true);
+            });
         } finally {
             setIsProcessing(false);
         }
@@ -377,7 +385,6 @@ export default function FundusDemo() {
               <circle cx="16" cy="12" r="2" fill="#FFF"/>
               <circle cx="24" cy="12" r="2" fill="#FFF"/>
             </svg>
-
             <button className="try-demo-button" onClick={handleTryDemo}>
               Try Demo
             </button>
@@ -388,198 +395,151 @@ export default function FundusDemo() {
         </>
       );
     }
-return (
-    <>
-        <nav className="navbar">
-          <div className="navbar-text">Fundus Classification Model Demo</div>
-        </nav>
-        
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          gap: '2px', 
-          flex: 1,
-          padding: 0,
-          margin: 0,
-          background: 'transparent'
-        }}>          
-            <svg
-            className="logo-svg clickable-logo"
-            width="140"
-            height="140"
-            viewBox="0 0 40 40"
-            xmlns="http://www.w3.org/2000/svg"
-            onClick={() => setIsModalOpen(true)}
-            role="button"
-            aria-label="Open Model Details"
-            tabIndex={0}
-            title="Model Details"
-            style={{ 
-                cursor: 'pointer',
-                background: 'transparent',
-                padding: 0,
-                margin: 0,
-                display: 'block',
-                outline: 'none'
-            }}
-            >
-            <defs>
-                {/* Soft glow filter */}
-                <filter id="softglow" x="-200%" y="-200%" width="500%" height="500%">
-                <feGaussianBlur stdDeviation="5.5" result="blur"/>
-                <feFlood flood-color="#dcd4efff" flood-opacity="0.48"/>
-                <feComposite in2="blur" operator="in"/>
-                <feMerge>
-                    <feMergeNode/>
-                    <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-                </filter>
 
-                {/* Larger circular clip for feather-soft edges */}
-                <clipPath id="circle-clip">
-                <circle cx="20" cy="20" r="12"/>
-                </clipPath>
-            </defs>
-
-            <g clip-path="url(#circle-clip)">
-                <g className="breathe-group">
-                {/* Larger face (r=11.5 → ~15% bigger), perfectly centered */}
-                <circle className="logo-circle" cx="20" cy="20" r="11.5" fill="#4A90E2" stroke="#ffffff" strokeWidth="1.3"/>
-                
-                {/* Proportionally larger eyes, shifted up slightly for balance */}
-                <circle cx="16.2" cy="15" r="2" fill="#ffffff"/>
-                <circle cx="23.8" cy="15" r="2" fill="#ffffff"/>
-
-                {/* "MODEL" smile shifted higher – curve now peaks at y=29 (was 32), starts at y=19 (was 17) → text sits ~10% higher */}
-                <path id="smilePath" d="M 10 21 Q 20 29 30 21" fill="none"/>
-                <text fontSize="2.45" fill="#ffffff" fontFamily="Arial, sans-serif" fontWeight="bold" textAnchor="middle">
-                    <textPath href="#smilePath" startOffset="50%" textLength="10.5" dy="-5.8">
-                    MODEL
-                    </textPath>
-                </text>
-
-                {/* Larger pulse source for bigger button */}
-                <g className="pulse-ripple" filter="url(#softglow)">
-                    <circle cx="20" cy="20" r="15" fill="#ffffff"/>
-                </g>
-                <g className="pulse-ripple delayed" filter="url(#softglow)">
-                    <circle cx="20" cy="20" r="15" fill="#ffffff"/>
-                </g>
-                </g>
-            </g>
-            </svg>
-            
-            <div className="fundus-demo" style={{ marginTop: '0px' }}>
-                {modelLoading && (
-                    <div className="loading-container">
-                        <h3>{loadingStage}</h3>
-                        <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+    return (
+        <>
+            <nav className="navbar">
+              <div className="navbar-text">Fundus Classification Model Demo</div>
+            </nav>
+           
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '2px',
+              flex: 1,
+              padding: 0,
+              margin: 0,
+              background: 'transparent'
+            }}>
+                <LogoButton
+                  isOpen={isModalOpen}
+                  onClick={() => setIsModalOpen(true)}
+                  size={140}
+                />
+               
+                <div className="fundus-demo" style={{ marginTop: '0px' }}>
+                    {modelLoading && (
+                        <div className="loading-container">
+                            <h3>{loadingStage}</h3>
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                            </div>
                         </div>
-                    </div>
-                )}
-                  {modelError && (
-                      <div className="error">
-                          <h3>Model Load Error</h3>
-                          <p>{modelError.message}</p>
-                      </div>
-                  )}
-
-                  {testSplitError && (
-                      <div className="error">
-                          <h3>Test Split Error</h3>
-                          <p>{testSplitError}</p>
-                      </div>
-                  )}
-
-                  {!modelLoading && !modelError && (
-                      <>
-                          {testSplitLoading && (
-                              <div className="loading-container">
-                                  <h3>Loading test data...</h3>
-                              </div>
-                          )}
-                          <button onClick={handlePickRandom} disabled={testSplitLoading || !!testSplitError || !testSplit.length}>
-                              Pick Random Image
-                          </button>
-
-                          <div className="image-container">
-                              {selectedImage ? (
-                                  <img
-                                      src={selectedImage}
-                                      alt="Fundus"
-                                      onError={(e) => {
-                                          console.error(`[Image] Load failed for: ${selectedImage}`);
-                                          e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjI0IiBoZWlnaHQ9IjIyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4=';
-                                      }}
-                                  />
-                              ) : (
-                                  <div className="image-placeholder">
-                                      Click "Pick Random Image" to start
+                    )}
+                      {modelError && (
+                          <div className="error">
+                              <h3>Model Load Error</h3>
+                              <p>{modelError.message}</p>
+                          </div>
+                      )}
+                      {testSplitError && (
+                          <div className="error">
+                              <h3>Test Split Error</h3>
+                              <p>{testSplitError}</p>
+                          </div>
+                      )}
+                      {!modelLoading && !modelError && (
+                          <>
+                              {testSplitLoading && (
+                                  <div className="loading-container">
+                                      <h3>Loading test data...</h3>
                                   </div>
                               )}
-                          </div>
-
-                          {gtLabel !== null && (
-                              <div className="result-item">
-                                  <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
-                              </div>
-                          )}
-
-                          <button onClick={handleRunInference} disabled={!selectedImage || isProcessing || !session}>
-                              {isProcessing ? "Processing..." : "Run Inference"}
-                          </button>
-
-                          {results.length > 0 && (
-                              <div className="results-container">
-                                  {results.map((result, index) => (
-                                      <div key={index} className="result-item">
-                                          <span className="result-label">{result.label}:</span> {result.value}
+                              <button onClick={handlePickRandom} disabled={
+                                  testSplitLoading ||
+                                  !!testSplitError ||
+                                  !testSplit.length ||
+                                  isProcessing
+                                }>
+                                  Pick Random Image
+                              </button>
+                              <div className="image-container">
+                                  {selectedImage ? (
+                                      <img
+                                          src={selectedImage}
+                                          alt="Fundus"
+                                          onLoad={() => {
+                                            console.log("[Image] Loaded successfully:", selectedImage);
+                                            setIsImageLoading(false);
+                                          }}
+                                          onError={(e) => {
+                                              console.error(`[Image] Load failed for: ${selectedImage}`);
+                                              e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjI0IiBoZWlnaHQ9IjIyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4=';
+                                              setIsImageLoading(false);
+                                              setSelectedImage(null);
+                                              setGtLabel(null);
+                                          }}
+                                      />
+                                  ) : (
+                                      <div className="image-placeholder">
+                                          Click "Pick Random Image" to start
                                       </div>
-                                  ))}
+                                  )}
                               </div>
-                          )}
-                      </>
-                  )}
-              </div>
-            </div>
-
-            <Modal open={isModalOpen} onClose={()=>setIsModalOpen(false)}>
-  <Box sx={modalStyle}>
-    <IconButton
-      aria-label="close"
-      onClick={()=>setIsModalOpen(false)}
-      sx={{
-        position: 'absolute',
-        right: 8,
-        top: 8,
-        color: (theme) => theme.palette.grey[500],
-      }}
-    >
-      <CloseIcon />
-    </IconButton>
-                    <Typography variant="h6" sx={{mb:3, fontWeight: 'bold', color: '#000'}}>Student Model Information</Typography>
-                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Test Accuracy: {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}%</Typography>
-                    <Typography sx={{mb:3, color: '#000'}}>
-                        This student model correctly identifies {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}% of eye images on its own, without relying on the more complex original system.
-                    </Typography>
-
-                    <Divider sx={{my: 2, borderColor: '#e0e0e0'}} />
-
-                    <Typography variant="subtitle1" sx={{mb:2, fontWeight: 'bold', color: '#000'}}>Conformal Prediction Metrics</Typography>
-                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Coverage: {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}%</Typography>
-                    <Typography sx={{mb:1, color: '#000'}}>The true diagnosis is included in the model's predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time.</Typography>
-                    
-                    <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Average Set Size: {Math.round(MODEL_DATA.conformal.avg_set_size * 100) / 100}</Typography>
-                    <Typography sx={{color: '#000'}}>The model typically provides one clear classification (1.07) per image, thereby prescribing deterministic predictions.</Typography>
-                </Box>
-            </Modal>
-
-            <footer className="footer">
-                <p>&copy; 2025 Fundus Demo. Built with ONNX Runtime Web.</p>
-            </footer>
-        </>
-    );
+                              {gtLabel !== null && (
+                                  <div className="result-item">
+                                      <span className="result-label">Ground Truth:</span> {CLASSES[gtLabel]}
+                                  </div>
+                              )}
+                              <button onClick={handleRunInference} disabled={
+                                  !session ||
+                                  !selectedImage ||
+                                  isImageLoading ||
+                                  isProcessing
+                                }>
+                                  {isProcessing ? "Processing..." : "Run Inference"}
+                              </button>
+                              {results.length > 0 && (
+                                  <div className="results-container">
+                                      {results.map((result, index) => (
+                                          <div key={index} className="result-item">
+                                              <span className="result-label">{result.label}:</span> {result.value}
+                                          </div>
+                                      ))}
+                                      {isRepeatInference && (
+                                          <div className="repeat-note">
+                                            Confidence is deterministic for reproducibility—time varies with system load.
+                                          </div>
+                                      )}
+                                  </div>
+                              )}
+                          </>
+                      )}
+                  </div>
+                </div>
+                <Modal open={isModalOpen} onClose={()=>setIsModalOpen(false)}>
+      <Box sx={modalStyle}>
+        <IconButton
+          aria-label="close"
+          onClick={()=>setIsModalOpen(false)}
+          sx={{
+            position: 'absolute',
+            right: 8,
+            top: 8,
+            color: (theme) => theme.palette.grey[500],
+          }}
+        >
+          <CloseIcon />
+        </IconButton>
+                        <Typography variant="h6" sx={{mb:3, fontWeight: 'bold', color: '#000'}}>Student Model Information</Typography>
+                        <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Test Accuracy: {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}%</Typography>
+                        <Typography sx={{mb:3, color: '#000'}}>
+                            This student model correctly identifies {Math.round(MODEL_DATA.student.test_acc * 10000) / 100}% of eye images on its own, without relying on the more complex original system.
+                        </Typography>
+                        <Divider sx={{my: 2, borderColor: '#e0e0e0'}} />
+                        <Typography variant="subtitle1" sx={{mb:2, fontWeight: 'bold', color: '#000'}}>Conformal Prediction Metrics</Typography>
+                        <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Coverage: {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}%</Typography>
+                        <Typography sx={{mb:1, color: '#000'}}>The true diagnosis is included in the model's predictions {Math.round(MODEL_DATA.conformal.coverage * 10000) / 100}% of the time.</Typography>
+                       
+                        <Typography sx={{mb:1, fontWeight: 'bold', color: '#000'}}>Average Set Size: {Math.round(MODEL_DATA.conformal.avg_set_size * 100) / 100}</Typography>
+                        <Typography sx={{color: '#000'}}>The model typically provides one clear classification (1.07) per image, thereby prescribing deterministic predictions.</Typography>
+                    </Box>
+                </Modal>
+                <footer className="footer">
+                    <p>&copy; 2025 Fundus Demo. Built with ONNX Runtime Web.</p>
+                </footer>
+            </>
+        );
 }

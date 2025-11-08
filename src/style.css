@@ -1,5 +1,4 @@
 /* src/style.css */
-
 /* Force pure white background (overrides everything, including dark mode) */
 html, body {
   margin: 0;
@@ -8,10 +7,9 @@ html, body {
   width: 100%;
   box-sizing: border-box;
   font-family: Arial, sans-serif;
-  background: #ffffff !important;  /* Pure white, forced */
+  background: #ffffff !important; /* Pure white, forced */
   overflow-x: hidden;
 }
-
 /* Root container */
 #root {
   display: flex;
@@ -23,7 +21,6 @@ html, body {
   padding-top: 60px;
   background: transparent;
 }
-
 /* Navbar - slightly lighter blue to pop on pure white */
 .navbar {
   position: fixed;
@@ -40,20 +37,17 @@ html, body {
   z-index: 1000;
   box-sizing: border-box;
 }
-
 .navbar-text {
   font-weight: bold;
   font-size: 18px;
   color: #fff;
 }
-
 .navbar-title {
   font-size: 1.5rem;
   color: #fff;
   margin: 0;
   font-weight: bold;
 }
-
 /* Title container - positioned at the top */
 .title-container {
   width: 100%;
@@ -61,20 +55,17 @@ html, body {
   padding: 0 20px 20px;
   box-sizing: border-box;
 }
-
 .title-container h1 {
   text-align: center;
   margin-bottom: 8px;
   font-size: 2rem;
 }
-
 .title-container h2 {
   text-align: center;
   margin: 0;
   font-size: 1.2rem;
   color: #666;
 }
-
 /* Logo container - positioned outside the main demo container */
 .logo-container {
   position: fixed;
@@ -82,7 +73,6 @@ html, body {
   right: 20px;
   z-index: 100;
 }
-
 /* Floating Try Demo button - now matches other buttons */
 .try-demo-button {
   display: block; /* Keep this for centering */
@@ -96,11 +86,9 @@ html, body {
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
-
 .try-demo-button:hover {
   background-color: #1565c0;
 }
-
 .try-demo-button:active {
   /* Added active state for consistency */
   background-color: #104e90;
@@ -121,8 +109,6 @@ html, body {
   margin: 10px auto 0;
   box-sizing: border-box;
 }
-
-
 /* Image container - now with straight, flush edges */
 .image-container {
   width: 224px;
@@ -134,14 +120,12 @@ html, body {
   border-radius: 0; /* Changed from 8px to 0 for straight edges */
   overflow: hidden;
 }
-
 /* Images */
 .fundus-demo img {
   width: 224px;
   height: 224px;
   object-fit: cover;
 }
-
 /* Image placeholder */
 .image-placeholder {
   color: #666;
@@ -149,7 +133,6 @@ html, body {
   text-align: center;
   padding: 10px;
 }
-
 /* Buttons */
 .fundus-demo button {
   padding: 8px 16px;
@@ -161,16 +144,13 @@ html, body {
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
-
 .fundus-demo button:hover {
   background-color: #1565c0;
 }
-
 .fundus-demo button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
 }
-
 /* Results container - unchanged as requested */
 .results-container {
   display: flex;
@@ -180,26 +160,22 @@ html, body {
   width: 100%;
   margin-top: 10px;
 }
-
 /* Result item - unchanged as requested */
 .result-item {
   text-align: center;
   margin: 5px 0;
 }
-
 /* Text colors - slightly darker for better contrast on pure white */
 .result-label {
   font-weight: bold;
   color: #222 !important;
 }
-
 /* Output text */
 .fundus-demo .output {
   margin-top: 10px;
   font-weight: bold;
   text-align: center;
 }
-
 /* Spinner for lazy loading */
 .spinner {
   border: 4px solid rgba(0, 0, 0, 0.1);
@@ -209,26 +185,22 @@ html, body {
   border-top-color: #3498db;
   animation: spin 1s linear infinite;
 }
-
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-
 /* Loading container - now transparent */
 .loading-container {
   width: 100%;
   text-align: center;
   padding: 10px 0;
 }
-
 .loading-container h3 {
   margin: 0; /* Remove default margin */
   font-size: 0.9rem; /* Smaller font */
   font-weight: 400;
   color: #555;
 }
-
 .progress-bar {
   width: 100%;
   height: 6px; /* Sleeker, thinner bar */
@@ -237,13 +209,11 @@ html, body {
   overflow: hidden;
   margin-top: 8px; /* Reduced margin */
 }
-
 .progress-fill {
   height: 100%;
   background-color: #1976d2;
   transition: width 0.2s ease-out; /* Slightly faster transition */
 }
-
 /* --- NEW: Indeterminate Progress Bar --- */
 .progress-fill-indeterminate {
   height: 100%;
@@ -251,7 +221,6 @@ html, body {
   width: 30%;
   animation: indeterminate-progress 1.5s infinite linear;
 }
-
 @keyframes indeterminate-progress {
   0% {
     transform: translateX(-100%);
@@ -260,7 +229,6 @@ html, body {
     transform: translateX(350%); /* Moves the bar across the container */
   }
 }
-
 /* Error message styling - updated for off-white background */
 .error {
   color: #d32f2f;
@@ -270,121 +238,124 @@ html, body {
   margin: 10px 0;
   border: 1px solid transparent;
 }
-
+/* Repeat inference note */
+.repeat-note {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: center;
+  margin-top: 5px;
+  font-style: italic;
+}
 /* Media Queries for Responsiveness */
-
 /* For tablets and smaller desktops */
 @media (max-width: 768px) {
   .title-container {
     padding: 0 15px 15px;
   }
-  
+ 
   .title-container h1 {
     font-size: 1.8rem;
   }
-  
+ 
   .fundus-demo {
     padding: 15px;
     margin: 15px auto 0;
   }
-  
+ 
   .navbar {
     padding: 0 15px;
   }
-  
+ 
   .navbar-text {
     font-size: 16px;
   }
-  
+ 
   .navbar-title {
     font-size: 1.3rem;
   }
 }
-
 /* For mobile phones */
 @media (max-width: 480px) {
   .title-container {
     padding: 0 10px 10px;
   }
-  
+ 
   .title-container h1 {
     font-size: 1.5rem;
     margin-bottom: 5px;
   }
-  
+ 
   .fundus-demo {
     padding: 15px;
     max-width: 100%;
     margin: 10px auto 0;
   }
-  
+ 
   .try-demo-button {
     width: 100%; /* Make it full-width on mobile for easier tapping */
     max-width: 300px;
   }
-  
+ 
   .image-container {
     width: 200px;
     height: 200px;
   }
-  
+ 
   .fundus-demo img {
     width: 200px;
     height: 200px;
   }
-  
+ 
   .fundus-demo button {
     width: 100%;
     max-width: 300px;
   }
-  
+ 
   .navbar {
     padding: 0 10px;
   }
-  
+ 
   .navbar-text {
     font-size: 16px;
   }
-  
+ 
   .navbar-title {
     font-size: 1.2rem;
   }
 }
-
 /* For very small mobile phones */
 @media (max-width: 320px) {
   .title-container h1 {
     font-size: 1.3rem;
   }
-  
+ 
   .fundus-demo {
     padding: 10px;
     margin: 5px auto 0;
   }
-  
+ 
   .image-container {
     width: 180px;
     height: 180px;
   }
-  
+ 
   .fundus-demo img {
     width: 180px;
     height: 180px;
   }
-  
+ 
   .navbar {
     padding: 0 5px;
   }
-  
+ 
   .navbar-text {
     font-size: 14px;
   }
-  
+ 
   .navbar-title {
     font-size: 1.1rem;
   }
 }
-
 .footer {
   margin-top: auto;
   padding: 20px;
@@ -392,70 +363,4 @@ html, body {
   color: #666;
   width: 100%;
   box-sizing: border-box;
-}
-
-/* ======== INVISIBLE-BOUNDARY LOGO – 100% BACKGROUND BLEND + DARK MODE ======== */
-.logo-svg:hover .logo-circle,
-.logo-svg:focus-visible .logo-circle {
-  fill: #4A90E2 !important;              /* lock original blue */
-}
-
-.clickable-logo {
-  clip-path: circle(70px at 70px 70px) !important;
-  overflow: hidden !important;
-  contain: layout style paint;
-}
-
-/* 8s total cycle = 5s dead silence + 3s ripple burst (repeats forever) */
-.breathe-group {
-  animation: breathe 8s ease-in-out infinite;
-  transform-origin: center;
-}
-.pulse-ripple {
-  transform-origin: center;
-  animation: soft-glow-pulse 8s ease-out infinite;
-  opacity: 0;
-}
-.pulse-ripple.delayed {
-  animation-delay: 1.5s;   /* perfect stagger – no extra gaps */
-}
-
-/* ==== 5s TOTAL SILENCE, then 3s dreamy burst ==== */
-@keyframes soft-glow-pulse {
-  0%, 62.5% {
-    transform: scale(0.05);
-    opacity: 0;
-  }
-  68.125% {
-    opacity: 0.35;        /* tiny bit brighter */
-  }
-  86.875% {
-    opacity: 0.15;
-  }
-  100% {
-    transform: scale(3.0);  /* was 2.8 – fills the bigger circle perfectly */
-    opacity: 0;
-  }
-}
-
-@keyframes breathe {
-  0%, 88.75% {                    /* 5s + most of active = still */
-    transform: scale(1);
-  }
-  93.25% {                        /* subtle "thump" as ripples hit edge */
-    transform: scale(1.09);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* Hover effects */
-.clickable-logo:hover {
-  transform: translateY(-4px);
-  transition: transform 0.35s ease;
-}
-
-.clickable-logo:hover .shadow-group {
-  filter: url(#hover-shadow);
 }
