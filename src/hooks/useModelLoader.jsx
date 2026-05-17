@@ -21,8 +21,15 @@ export default function useModelLoader(modelUrl) {
                 ort.env.wasm.numThreads = 1;
                 ort.env.allowJSEPSupport = false;
 
-                // Correct session creation (no `Vt.SessionOptions`)
-                const session = await ort.InferenceSession.create(modelUrl, {
+                const response = await fetch(modelUrl);
+                if (!response.ok) throw new Error(`Model download failed: ${response.status}`);
+
+                // No check for Content-Length here. 
+                // Just consume the stream entirely.
+                const modelBuffer = await response.arrayBuffer();
+
+                // Correct session creation using buffer directly
+                const session = await ort.InferenceSession.create(modelBuffer, {
                     executionProviders: ["wasm"],
                 });
 

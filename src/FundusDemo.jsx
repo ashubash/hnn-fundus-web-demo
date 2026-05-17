@@ -68,15 +68,14 @@ function useModelLoader() {
             const response = await fetch(url, { signal });
             if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
             const contentLength = response.headers.get('Content-Length');
-            if (!contentLength) throw new Error('Content-Length header is missing.');
-            const totalBytes = parseInt(contentLength, 10);
-           
-            // NEW: Log model name and size
+            const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+
             const modelName = url.split('/').pop();
-            console.log(`[ModelLoader] Fetching model: ${modelName}, size: ${totalBytes} bytes`);
-           
-            // Report the total size of this specific file to the main loader
+            console.log(`[ModelLoader] Fetching: ${modelName}, Reported Size: ${totalBytes || 'Unknown'} bytes`);
+
+            // Pass the size (even if 0) to the loader
             onTotalSizeKnown(totalBytes);
+
             const reader = response.body.getReader();
             const chunks = [];
             while (true) {
